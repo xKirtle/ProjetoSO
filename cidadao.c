@@ -16,6 +16,9 @@
 
 #define my_gets(buffer, buffer_size) my_fgets(buffer, buffer_size, stdin)
 
+int canSIGINT = 0;
+int fileExists = 0;
+
 Cidadao pedirInput()
 {
     Cidadao cidadao;
@@ -23,7 +26,9 @@ Cidadao pedirInput()
     char num_utente[6];
     printf("Introduza o seu número de utente: ");
     my_gets(num_utente, 6);
-    sscanf(num_utente, "%d", &cidadao.num_utente);
+    cidadao.num_utente = atoi(num_utente);
+    //TODO: sscanf doesn't work here but works on age?
+    // sscanf(num_utente, "%d", &cidadao.num_utente);
 
     printf("Introduza o seu nome: ");
     my_gets(cidadao.nome, 100);
@@ -50,14 +55,32 @@ Cidadao pedirInput()
     return cidadao;
 }
 
+void handleSIGALRM(int signal)
+{
+    if (access("pedidovacina.txt", F_OK) != 0)
+    {
+        sucesso("C3) Ficheiro FILE_PEDIDO_VACINA pode ser criado");
+        fileExists = 0;
+        return;
+    }
+    else erro("C3) Não é possível iniciar o processo de vacinação neste momento");
+
+    alarm(5);
+}
+
 void iniciarVacina(Cidadao cidadao) 
 {
     if (access("pedidovacina.txt", F_OK) == 0)
     {
         erro("C3) Não é possível iniciar o processo de vacinação neste momento");
-        exit(0);
+
+        signal(SIGALRM, handleSIGALRM);
+        alarm(5);
+        fileExists = 1;
     }
     else sucesso("C3) Ficheiro FILE_PEDIDO_VACINA pode ser criado");
+
+    while (fileExists == 1) pause();
 
     FILE *pv = fopen("pedidovacina.txt", "w");
     if (pv != NULL)
@@ -69,10 +92,13 @@ void iniciarVacina(Cidadao cidadao)
     }
     else erro("C4) Não é possível criar o ficheiro FILE_PEDIDO_VACINA");
     fclose(pv);
+
+    canSIGINT = 1;
 }
 
 void handleSIGINT(int signal)
 {
+    if (canSIGINT == 0) return;
     sucesso("C5) O cidadão cancelou a vacinação, o pedido nº%d foi cancelado", getpid());
     remove("pedidovacina.txt");
     exit(0);
@@ -97,6 +123,13 @@ void handleSIGTERM(int signal)
     exit(0);
 }
 
+void handleSignals()
+{
+    signal(SIGUSR1, handleSIGUSRone);
+    signal(SIGUSR2, handleSIGUSRtwo);
+    signal(SIGTERM, handleSIGTERM);
+}
+
 int lerSPID()
 {
     if (access("servidor.pid", F_OK) == 0)
@@ -115,12 +148,11 @@ int lerSPID()
 
 int main()
 {
+    signal(SIGINT, handleSIGINT);
     Cidadao cidadao = pedirInput();
     iniciarVacina(cidadao);
-    signal(SIGINT,  handleSIGINT);
+    handleSignals();
     lerSPID();
 
-    signal(SIGUSR1, handleSIGUSRone);
-    signal(SIGUSR2, handleSIGUSRtwo);
-    signal(SIGTERM, handleSIGTERM);
+    while(1) pause();
 }
