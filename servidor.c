@@ -53,8 +53,16 @@ void lerEnfermeiros()
     else erro("S2) Não consegui ler o ficheiro %s!", FILE_ENFERMEIROS);
 }
 
+void handleSIGUSRone(int signal)
+{
+    //S5
+}
+
 int main() 
 {
     registarServidor();
     lerEnfermeiros();
+
+    signal(SIGUSR1, handleSIGUSRone);
+    sucesso("S4) Servidor espera pedidos");
 }
