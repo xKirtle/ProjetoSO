@@ -52,7 +52,7 @@ Cidadao pedirInput()
 
 void iniciarVacina(Cidadao cidadao) 
 {
-    if (access("pedidovacina.txt", F_OK) == 0) //File already exists
+    if (access("pedidovacina.txt", F_OK) == 0)
     {
         erro("C3) Não é possível iniciar o processo de vacinação neste momento");
         exit(0);
@@ -117,7 +117,9 @@ int main()
 {
     Cidadao cidadao = pedirInput();
     iniciarVacina(cidadao);
-    signal(SIGINT, handleSIGINT);
+    signal(SIGINT,  handleSIGINT);
+    lerSPID();
+
     signal(SIGUSR1, handleSIGUSRone);
     signal(SIGUSR2, handleSIGUSRtwo);
     signal(SIGTERM, handleSIGTERM);
