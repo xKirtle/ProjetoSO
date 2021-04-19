@@ -10,7 +10,21 @@
 #include "common.h"
 
 Vaga vagas[NUM_VAGAS];
+Enfermeiro enfermeiros;
 
-int main () {
-    debug("Esta é uma mensagem exemplo de debug.");
+void registarServidor()
+{
+    FILE *servidor = fopen(FILE_PID_SERVIDOR, "w");
+    if (servidor != NULL)
+    {
+        fprintf(servidor, "%d", getpid());
+        sucesso("S1) Escrevi no ficheiro %s o PID: %d", FILE_PID_SERVIDOR, getpid());
+    }
+    else erro("S1) Não consegui registar o servidor!");
+    fclose(servidor);
+}
+
+int main() 
+{
+    registarServidor();
 }
