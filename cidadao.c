@@ -16,12 +16,18 @@
 
 #define my_gets(buffer, buffer_size) my_fgets(buffer, buffer_size, stdin)
 
+#define DEBUG_MODE 1
+
 int canSIGINT = 0;
 int fileExists = 0;
 
 Cidadao pedirInput()
 {
     Cidadao cidadao;
+
+#ifdef DEBUG_MODE
+    return (Cidadao){98420, "Rodrigo Martins", 19, "CSAmadora", "934466374", 0, getpid()};
+#endif
 
     char num_utente[6];
     printf("Introduza o seu número de utente: ");
@@ -47,8 +53,8 @@ Cidadao pedirInput()
     cidadao.estado_vacinacao = 0;
     cidadao.PID_cidadao = getpid();
 
-    sucesso("C1) Dados Cidadão: %d; %s; %d; %s; %s; %d;\n", cidadao.num_utente, cidadao.nome, 
-        cidadao.idade, cidadao.localidade, cidadao.nr_telemovel, cidadao.estado_vacinacao);
+    sucesso("C1) Dados Cidadão: %d; %s; %d; %s; %s; %d;\n", cidadao.num_utente, cidadao.nome,
+            cidadao.idade, cidadao.localidade, cidadao.nr_telemovel, cidadao.estado_vacinacao);
 
     sucesso("C2) PID Cidadão: %d\n", cidadao.PID_cidadao);
 
@@ -63,12 +69,13 @@ void handleSIGALRM(int signal)
         fileExists = 0;
         return;
     }
-    else erro("C3) Não é possível iniciar o processo de vacinação neste momento");
+    else
+        erro("C3) Não é possível iniciar o processo de vacinação neste momento");
 
     alarm(5);
 }
 
-void iniciarVacina(Cidadao cidadao) 
+void iniciarVacina(Cidadao cidadao)
 {
     if (access(FILE_PEDIDO_VACINA, F_OK) == 0)
     {
@@ -78,9 +85,11 @@ void iniciarVacina(Cidadao cidadao)
         alarm(5);
         fileExists = 1;
     }
-    else sucesso("C3) Ficheiro %s pode ser criado", FILE_PEDIDO_VACINA);
+    else
+        sucesso("C3) Ficheiro %s pode ser criado", FILE_PEDIDO_VACINA);
 
-    while (fileExists == 1) pause();
+    while (fileExists == 1)
+        pause();
 
     FILE *pv = fopen("pedidovacina.txt", "w");
     if (pv != NULL)
@@ -90,7 +99,8 @@ void iniciarVacina(Cidadao cidadao)
 
         sucesso("C4) Ficheiro %s criado e preenchido", FILE_PEDIDO_VACINA);
     }
-    else erro("C4) Não é possível criar o ficheiro %s", FILE_PEDIDO_VACINA);
+    else
+        erro("C4) Não é possível criar o ficheiro %s", FILE_PEDIDO_VACINA);
     fclose(pv);
 
     canSIGINT = 1;
@@ -98,7 +108,8 @@ void iniciarVacina(Cidadao cidadao)
 
 void handleSIGINT(int signal)
 {
-    if (canSIGINT == 0) return;
+    if (canSIGINT == 0)
+        return;
     sucesso("C5) O cidadão cancelou a vacinação, o pedido nº%d foi cancelado", getpid());
     remove(FILE_PEDIDO_VACINA);
     exit(0);
@@ -143,7 +154,8 @@ int lerSPID()
         kill(atoi(PID_Servidor), SIGUSR1);
         sucesso("C6) Sinal enviado ao Servidor: %s", PID_Servidor);
     }
-    else erro("C6) Não existe ficheiro %s!", FILE_PEDIDO_VACINA);
+    else
+        erro("C6) Não existe ficheiro %s!", FILE_PEDIDO_VACINA);
 }
 
 int main()
@@ -154,5 +166,6 @@ int main()
     handleSignals();
     lerSPID();
 
-    while(1) pause();
+    while (1)
+        pause();
 }

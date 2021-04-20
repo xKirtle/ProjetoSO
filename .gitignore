@@ -3,3 +3,7 @@ cidadao
 pedidovacina.txt
 servidor
 servidor.pid
+*.json
+cidadao
+servidor.c
+servidor.pid
