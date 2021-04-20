@@ -39,9 +39,13 @@ void lerEnfermeiros()
         int nr_enf = fsize / sizeof(Enfermeiro);
         enfermeiros = (Enfermeiro *)malloc(nr_enf * sizeof(Enfermeiro));
 
+        //TODO: NOT READING ENF DATA PROPERLY HERE
         for (int i = 0; i < nr_enf; i++)
             if (fread(enf, sizeof(Enfermeiro), 1, enfData) == 1)
+            {
+                printf("NOME: %s\n", enf->nome);
                 enfermeiros[i] = *enf;
+            }
 
         free(enfermeiros);
 
@@ -66,6 +70,8 @@ Cidadao lerCidadao()
         int scan = sscanf(buffer, "%d:%[^:]:%d:%[^:]:%[^:]:%d:%d", &cidadao.num_utente, cidadao.nome, &cidadao.idade,
                           cidadao.localidade, cidadao.nr_telemovel, &cidadao.estado_vacinacao, &cidadao.PID_cidadao);
 
+        //TODO: Better way of checking if file can be read without strlen(buffer)?
+        //Maybe access(file, R_OK)?
         if (strlen(buffer) != 0 && scan == 7)
         {
             printf("Chegou o cidadão com o pedido nº %d, com nº utente %d, para ser vacinado no Centro de Saúde %s\n",
@@ -74,10 +80,24 @@ Cidadao lerCidadao()
                     cidadao.localidade, cidadao.nr_telemovel, cidadao.estado_vacinacao);
         }
         else
-            erro("S5.1) Não foi possível ler o ficheiro FILE_PEDIDO_VACINA");
+            erro("S5.1) Não foi possível ler o ficheiro %s", FILE_PEDIDO_VACINA);
     }
     else
         erro("S5.1) Não foi possível abrir o ficheiro %s", FILE_PEDIDO_VACINA);
+
+    return cidadao;
+}
+
+void arranjarEnfermeiro(Cidadao cidadao)
+{
+    for (size_t i = 0; i < 10; i++)
+    {
+        printf("%s", enfermeiros[i].nome);
+    }
+
+    size_t nr_enf = sizeof(enfermeiros) / sizeof(enfermeiros[0]);
+    printf("SIZE: %ld\n", nr_enf);
+    fflush(stdout);
 }
 
 void handleSIGUSRone(int signal)
@@ -89,7 +109,8 @@ int main()
 {
     registarServidor();
     lerEnfermeiros();
-    lerCidadao();
+    Cidadao cidadao = lerCidadao();
+    arranjarEnfermeiro(cidadao);
 
     signal(SIGUSR1, handleSIGUSRone);
     sucesso("S4) Servidor espera pedidos");
