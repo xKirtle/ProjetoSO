@@ -30,24 +30,23 @@ void registarServidor()
 
 void lerEnfermeiros()
 {
-    Enfermeiro enf[sizeof(Enfermeiro)];
     FILE *enfData = fopen(FILE_ENFERMEIROS, "rb");
     if (enfData != NULL)
     {
         fseek(enfData, 0, SEEK_END);
         long fsize = ftell(enfData);
         int nr_enf = fsize / sizeof(Enfermeiro);
+        //Confirmar que malloc nao retorna um null pointer?
         enfermeiros = (Enfermeiro *)malloc(nr_enf * sizeof(Enfermeiro));
+        fseek(enfData, 0, SEEK_SET);
 
-        //TODO: NOT READING ENF DATA PROPERLY HERE
+        Enfermeiro enf[sizeof(Enfermeiro)];
         for (int i = 0; i < nr_enf; i++)
             if (fread(enf, sizeof(Enfermeiro), 1, enfData) == 1)
-            {
-                printf("NOME: %s\n", enf->nome);
                 enfermeiros[i] = *enf;
-            }
-
-        free(enfermeiros);
+                
+        // Nao queremos libertar a memoria onde temos os enfermeiros..?
+        // free(enfermeiros); 
 
         sucesso("S2) Ficheiro %s tem %ld bytes, ou seja, %d enfermeiros", FILE_ENFERMEIROS, fsize, nr_enf);
 
@@ -90,14 +89,14 @@ Cidadao lerCidadao()
 
 void arranjarEnfermeiro(Cidadao cidadao)
 {
-    for (size_t i = 0; i < 10; i++)
-    {
-        printf("%s", enfermeiros[i].nome);
-    }
+    // for (size_t i = 0; i < 10; i++)
+    // {
+    //     printf("%s", enfermeiros[i].nome);
+    // }
 
-    size_t nr_enf = sizeof(enfermeiros) / sizeof(enfermeiros[0]);
-    printf("SIZE: %ld\n", nr_enf);
-    fflush(stdout);
+    // size_t nr_enf = sizeof(enfermeiros) / sizeof(enfermeiros[0]);
+    // printf("SIZE: %ld\n", nr_enf);
+    // fflush(stdout);
 }
 
 void handleSIGUSRone(int signal)
