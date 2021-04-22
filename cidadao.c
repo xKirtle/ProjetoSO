@@ -26,7 +26,7 @@ Cidadao pedirInput()
     Cidadao cidadao;
 
 #ifdef DEBUG_MODE
-    return (Cidadao){98420, "Rodrigo Martins", 19, "CSAmadora", "934466374", 0, getpid()};
+    return (Cidadao){98420, "Rodrigo Martins", 19, "CSLisboa", "934466374", 0, getpid()};
 #endif
 
     char num_utente[6];

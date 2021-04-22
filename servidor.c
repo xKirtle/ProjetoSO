@@ -13,7 +13,9 @@
 #include "common.h"
 
 Vaga vagas[NUM_VAGAS];
+int index_vagas;
 Enfermeiro *enfermeiros;
+int nr_enf; //Numero de enfermeiros no sistema
 
 void registarServidor()
 {
@@ -35,7 +37,7 @@ void lerEnfermeiros()
     {
         fseek(enfData, 0, SEEK_END);
         long fsize = ftell(enfData);
-        int nr_enf = fsize / sizeof(Enfermeiro);
+        nr_enf = fsize / sizeof(Enfermeiro);
         //Confirmar que malloc nao retorna um null pointer?
         enfermeiros = (Enfermeiro *)malloc(nr_enf * sizeof(Enfermeiro));
         fseek(enfData, 0, SEEK_SET);
@@ -44,13 +46,13 @@ void lerEnfermeiros()
         for (int i = 0; i < nr_enf; i++)
             if (fread(enf, sizeof(Enfermeiro), 1, enfData) == 1)
                 enfermeiros[i] = *enf;
-                
+
         // Nao queremos libertar a memoria onde temos os enfermeiros..?
         // free(enfermeiros); 
 
         sucesso("S2) Ficheiro %s tem %ld bytes, ou seja, %d enfermeiros", FILE_ENFERMEIROS, fsize, nr_enf);
 
-        for (int i = 0; i < nr_enf; i++)
+        for (int i = 0; i < NUM_VAGAS; i++)
             vagas[i].index_enfermeiro = -1;
         sucesso("S3) Iniciei a lista de %d vagas", NUM_VAGAS);
     }
@@ -89,27 +91,110 @@ Cidadao lerCidadao()
 
 void arranjarEnfermeiro(Cidadao cidadao)
 {
-    // for (size_t i = 0; i < 10; i++)
-    // {
-    //     printf("%s", enfermeiros[i].nome);
-    // }
+    for (int i = 0; i < nr_enf; i++)
+    {
+        if (strcmp(enfermeiros[i].CS_enfermeiro, cidadao.localidade) == 0)
+        {
+            if (enfermeiros[i].disponibilidade == 1) 
+            {
+                sucesso("S5.2.1) Enfermeiro <Index %d disponível para o pedido %d", i, cidadao.PID_cidadao);
 
-    // size_t nr_enf = sizeof(enfermeiros) / sizeof(enfermeiros[0]);
-    // printf("SIZE: %ld\n", nr_enf);
-    // fflush(stdout);
+                for (index_vagas = 0; index_vagas < NUM_VAGAS; index_vagas++)
+                    if (vagas[index_vagas].index_enfermeiro == -1)
+                        break;
+
+                if (index_vagas != NUM_VAGAS) //existem vagas
+                {
+                    sucesso("S5.2.2) Há vaga para vacinação para o pedido %d", cidadao.PID_cidadao);
+
+                    enfermeiros[i].disponibilidade = 0;
+                    Vaga vaga = {cidadao.PID_cidadao, cidadao, i};
+                    vagas[index_vagas] = vaga;
+
+                    sucesso("S5.3) Vaga nº %d preenchida para o pedido %d", index_vagas, cidadao.PID_cidadao);
+                }
+                else
+                {
+                    kill(cidadao.PID_cidadao, SIGTERM);
+                    erro("S5.2.2) Não há vaga para vacinação para o pedido %d", cidadao.PID_cidadao);
+                }
+            }
+            else
+            {
+                kill(cidadao.PID_cidadao, SIGTERM);
+                erro("S5.2.1) Enfermeiro %d indisponível para o pedido %d para o Centro de Saúde %s", i, cidadao.PID_cidadao, enfermeiros[i].CS_enfermeiro);
+            }
+        }
+    }
+    
+}
+
+void handleSIGCHLD(int signal)
+{
+    //hexdump -e '"%i, %20.100s, %12.100s, %i, %i\n"' enfermeiros.dat
+
+    //Servidor-Filho terminou e chama isto?
+    //S5.5.2??
+
+    //Vaga libertada?
+    int enfIndex = vagas[index_vagas].index_enfermeiro;
+    sucesso("S5.5.3.1) Vaga %d que era do servidor dedicado %d libertada", index_vagas, vagas[index_vagas].PID_filho);
+    vagas[index_vagas].index_enfermeiro = -1;
+
+    enfermeiros[enfIndex].disponibilidade = 1;
+    sucesso("S5.5.3.2) Enfermeiro %d atualizado para disponível", enfIndex);
+
+    enfermeiros[enfIndex].num_vac_dadas += 1;
+    sucesso("S5.5.3.3) Enfermeiro %d atualizado para %d vacinas dadas", enfIndex, enfermeiros[enfIndex].num_vac_dadas);
+
+    //ATUALIZAR ENFERMEIROS.DAT -> S5.5.3.4
+    //Modificar apenas o nr de vacinas em vez do ficheiro todo?
+
+    FILE *enfData = fopen(FILE_ENFERMEIROS, "wb+");
+    if (enfData != NULL)
+    {
+        for (int i = 0; i < nr_enf; i++)
+            fwrite(&enfermeiros[i], sizeof(Enfermeiro), 1, enfData);
+
+        sucesso("S5.5.3.4) Ficheiro %s %d atualizado para %d vacinas dadas", FILE_ENFERMEIROS, enfIndex, enfermeiros[enfIndex].num_vac_dadas);
+    }
+    fclose(enfData);
+
+    sucesso("S5.5.3.5) Retorna");
+}
+
+void cincoPontoQuatro(Cidadao cidadao)
+{
+    int value = fork(); // =0 -> child, >0 -> parent (value->childPID), =-1 error
+    if (value == -1)
+        erro("S5.4) Não foi possível criar o servidor dedicado");
+    else if (value != 0) //Parent
+    {
+        sucesso("S5.4) Servidor dedicado %d criado para o pedido %d", value, cidadao.PID_cidadao);
+        vagas[index_vagas].PID_filho = value;
+        sucesso("S5.5.1) Servidor dedicado %d na vaga %d", value, index_vagas);
+        signal(SIGCHLD, handleSIGCHLD);//TODO: S5.5.2?????????????????
+        sucesso("S5.5.2) Servidor aguarda fim do servidor dedicado %d", value);
+    }
+    
 }
 
 void handleSIGUSRone(int signal)
 {
-    lerCidadao();
+    // Cidadao cidadao = lerCidadao();
+    // arranjarEnfermeiro(cidadao);
+    // cincoPontoQuatro(cidadao);
 }
 
 int main()
 {
     registarServidor();
     lerEnfermeiros();
+    //commented in the right place..
     Cidadao cidadao = lerCidadao();
     arranjarEnfermeiro(cidadao);
+    cincoPontoQuatro(cidadao);
+    handleSIGCHLD(1);
 
     signal(SIGUSR1, handleSIGUSRone);
     sucesso("S4) Servidor espera pedidos");
