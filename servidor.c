@@ -48,7 +48,7 @@ void lerEnfermeiros()
                 enfermeiros[i] = *enf;
 
         // Nao queremos libertar a memoria onde temos os enfermeiros..?
-        // free(enfermeiros); 
+        // free(enfermeiros);
 
         sucesso("S2) Ficheiro %s tem %ld bytes, ou seja, %d enfermeiros", FILE_ENFERMEIROS, fsize, nr_enf);
 
@@ -95,7 +95,7 @@ void arranjarEnfermeiro(Cidadao cidadao)
     {
         if (strcmp(enfermeiros[i].CS_enfermeiro, cidadao.localidade) == 0)
         {
-            if (enfermeiros[i].disponibilidade == 1) 
+            if (enfermeiros[i].disponibilidade == 1)
             {
                 sucesso("S5.2.1) Enfermeiro <Index %d disponível para o pedido %d", i, cidadao.PID_cidadao);
 
@@ -126,7 +126,6 @@ void arranjarEnfermeiro(Cidadao cidadao)
             }
         }
     }
-    
 }
 
 void handleSIGCHLD(int signal)
@@ -163,7 +162,24 @@ void handleSIGCHLD(int signal)
     sucesso("S5.5.3.5) Retorna");
 }
 
-void cincoPontoQuatro(Cidadao cidadao)
+void handleSIGTERM(int signal) //Chamado pelo filho
+{
+    kill(SIGTERM, vagas[index_vagas].cidadao.PID_cidadao);
+    sucesso("S5.6.1) SIGTERM recebido, servidor dedicado termina Cidadão");
+    exit(0);
+}
+
+void handleSIGTERMdois(int signal) //Chamado pelo pai
+{
+    for (int i = 0; i < NUM_VAGAS; i++)
+        kill(SIGTERM, vagas[i].PID_filho);
+
+    remove(FILE_PID_SERVIDOR);
+    sucesso("S6) Servidor terminado");
+    exit(0);
+}
+
+void criarFilho(Cidadao cidadao)
 {
     int value = fork(); // =0 -> child, >0 -> parent (value->childPID), =-1 error
     if (value == -1)
@@ -173,30 +189,36 @@ void cincoPontoQuatro(Cidadao cidadao)
         sucesso("S5.4) Servidor dedicado %d criado para o pedido %d", value, cidadao.PID_cidadao);
         vagas[index_vagas].PID_filho = value;
         sucesso("S5.5.1) Servidor dedicado %d na vaga %d", value, index_vagas);
-        signal(SIGCHLD, handleSIGCHLD);//TODO: S5.5.2?????????????????
+        signal(SIGCHLD, handleSIGCHLD); //TODO: S5.5.2?????????????????
         sucesso("S5.5.2) Servidor aguarda fim do servidor dedicado %d", value);
     }
-    
+    else //value == 0 -> Child
+    {
+        signal(SIGTERM, handleSIGTERM);
+        kill(SIGUSR1, cidadao.PID_cidadao);
+        sucesso("S5.6.2) Servidor dedicado inicia consulta de vacinação");
+        sleep(TEMPO_CONSULTA);
+        sucesso("S5.6.3) Vacinação terminada para o cidadão com o pedido nº %d", cidadao.PID_cidadao);
+        kill(SIGUSR2, cidadao.PID_cidadao);
+        sucesso("S5.6.4) Servidor dedicado termina consulta de vacinação");
+        exit(0);
+    }
 }
 
 void handleSIGUSRone(int signal)
 {
-    // Cidadao cidadao = lerCidadao();
-    // arranjarEnfermeiro(cidadao);
-    // cincoPontoQuatro(cidadao);
+    Cidadao cidadao = lerCidadao();
+    arranjarEnfermeiro(cidadao);
+    criarFilho(cidadao);
 }
 
 int main()
 {
     registarServidor();
     lerEnfermeiros();
-    //commented in the right place..
-    Cidadao cidadao = lerCidadao();
-    arranjarEnfermeiro(cidadao);
-    cincoPontoQuatro(cidadao);
-    handleSIGCHLD(1);
 
     signal(SIGUSR1, handleSIGUSRone);
+    signal(SIGTERM, handleSIGTERMdois);
     sucesso("S4) Servidor espera pedidos");
 
     while (1)
