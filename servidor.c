@@ -169,7 +169,7 @@ void handleSIGTERM(int signal) //Chamado pelo filho
     exit(0);
 }
 
-void handleSIGTERMdois(int signal) //Chamado pelo pai
+void handleSIGINT(int signal) //Chamado pelo pai
 {
     for (int i = 0; i < NUM_VAGAS; i++)
         kill(SIGTERM, vagas[i].PID_filho);
@@ -218,7 +218,7 @@ int main()
     lerEnfermeiros();
 
     signal(SIGUSR1, handleSIGUSRone);
-    signal(SIGTERM, handleSIGTERMdois);
+    signal(SIGINT, handleSIGINT);
     sucesso("S4) Servidor espera pedidos");
 
     while (1)

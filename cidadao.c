@@ -148,7 +148,7 @@ int lerSPID()
         char PID_Servidor[10];
         FILE *spid = fopen("servidor.pid", "r");
         if (spid != NULL)
-            my_fgets(PID_Servidor, 1024, spid);
+            my_fgets(PID_Servidor, 10, spid);
         fclose(spid);
 
         kill(atoi(PID_Servidor), SIGUSR1);
