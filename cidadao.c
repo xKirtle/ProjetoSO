@@ -1,10 +1,14 @@
 /******************************************************************************
  ** ISCTE-IUL: Trabalho prático de Sistemas Operativos
  **
- ** Aluno: Nº:       Nome: 
+ ** Aluno: Nº: 98420   Nome: Rodrigo Martins 
  ** Nome do Módulo: cidadao.c
  ** Descrição/Explicação do Módulo: 
  **
+ **   O módulo começa por pedir ao utilizador as suas informações pessoais para
+ ** iniciar o processo de vacinação (onde vai guardar essas informações num 
+ ** ficheiro de texto). Depois disso, armamos e tratamos os sinais necessários
+ ** para o servidor conseguir informar o cidadão do progresso da vacinação
  **
  ******************************************************************************/
 #include <stdio.h>
@@ -16,25 +20,21 @@
 
 #define my_gets(buffer, buffer_size) my_fgets(buffer, buffer_size, stdin)
 
-#define DEBUG_MODE 1
-
 int canSIGINT = 0;
 int fileExists = 0;
 
 Cidadao pedirInput()
 {
-    Cidadao cidadao;
+    // #ifdef DEBUG_MODE
+    //     return (Cidadao){98420, "Rodrigo Martins", 19, "CSLisboa", "934466374", 0, getpid()};
+    // #endif
 
-#ifdef DEBUG_MODE
-    return (Cidadao){98420, "Rodrigo Martins", 19, "CSLisboa", "934466374", 0, getpid()};
-#endif
+    Cidadao cidadao;
 
     char num_utente[6];
     printf("Introduza o seu número de utente: ");
     my_gets(num_utente, 6);
     cidadao.num_utente = atoi(num_utente);
-    //TODO: sscanf doesn't work here but works on age?
-    // sscanf(num_utente, "%d", &cidadao.num_utente);
 
     printf("Introduza o seu nome: ");
     my_gets(cidadao.nome, 100);
@@ -65,7 +65,7 @@ void handleSIGALRM(int signal)
 {
     if (access(FILE_PEDIDO_VACINA, F_OK) != 0)
     {
-        sucesso("C3) Ficheiro %s pode ser criado", FILE_PEDIDO_VACINA);
+        sucesso("C3) Ficheiro FILE_PEDIDO_VACINA pode ser criado");
         fileExists = 0;
         return;
     }
@@ -86,21 +86,21 @@ void iniciarVacina(Cidadao cidadao)
         fileExists = 1;
     }
     else
-        sucesso("C3) Ficheiro %s pode ser criado", FILE_PEDIDO_VACINA);
+        sucesso("C3) Ficheiro FILE_PEDIDO_VACINA pode ser criado");
 
     while (fileExists == 1)
         pause();
 
-    FILE *pv = fopen("pedidovacina.txt", "w");
+    FILE *pv = fopen(FILE_PEDIDO_VACINA, "w");
     if (pv != NULL)
     {
         fprintf(pv, "%d:%s:%d:%s:%s:%d:%d", cidadao.num_utente, cidadao.nome, cidadao.idade,
                 cidadao.localidade, cidadao.nr_telemovel, cidadao.estado_vacinacao, cidadao.PID_cidadao);
 
-        sucesso("C4) Ficheiro %s criado e preenchido", FILE_PEDIDO_VACINA);
+        sucesso("C4) Ficheiro FILE_PEDIDO_VACINA criado e preenchido");
     }
     else
-        erro("C4) Não é possível criar o ficheiro %s", FILE_PEDIDO_VACINA);
+        erro("C4) Não é possível criar o ficheiro FILE_PEDIDO_VACINA");
     fclose(pv);
 
     canSIGINT = 1;
@@ -155,7 +155,7 @@ int lerSPID()
         sucesso("C6) Sinal enviado ao Servidor: %s", PID_Servidor);
     }
     else
-        erro("C6) Não existe ficheiro %s!", FILE_PEDIDO_VACINA);
+        erro("C6) Não existe ficheiro FILE_PEDIDO_VACINA!");
 }
 
 int main()
