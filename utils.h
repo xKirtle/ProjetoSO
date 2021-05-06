@@ -1,8 +1,8 @@
 /******************************************************************************
- ** ISCTE-IUL: Trabalho prático de Sistemas Operativos
+ ** ISCTE-IUL: Trabalho prático 3 de Sistemas Operativos
  **
- ** Aluno: Nº:       Nome: 
- ** Nome do Módulo: utils.h v2
+ ** Aluno: Nº:       Nome: Este Módulo não precisa ser entregue
+ ** Nome do Módulo: utils.h
  ** Descrição/Explicação do Módulo: 
  **     Definição de funções utilitárias genéricas
  **
@@ -14,6 +14,8 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
+#include <stdlib.h>
 
 /******************************************************************************
  *  Macros para tratamento de mensagens de DEBUG
@@ -30,7 +32,7 @@
  *  Escreve uma mensagem de debug (parâmetros iguais ao printf) se DEBUG_MODE estiver a 1
  *  @param ... os argumentos são os mesmos que os do printf(), logo recebe uma string de formatação e depois um número variável de argumentos
  */
-#define debug(fmt, ...) do { if (DEBUG_MODE) fprintf(stderr, "@@DEBUG@@:%s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, ## __VA_ARGS__); } while (0)
+#define debug(fmt, ...) do { if (DEBUG_MODE) fprintf(stderr, "@@Debug@@:%s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, ## __VA_ARGS__); } while (0)
 
 
 /******************************************************************************
@@ -50,6 +52,19 @@
  */
 #define erro(fmt, ...) do { printf("@@Error@@: " fmt "\n", ## __VA_ARGS__); } while (0)
 
+/**
+ *  Valida se uma operação teve sucesso ou não. Se não teve, escreve uma mensagem de erro e sai com erro -1, e mostrando a mensagem de erro,
+ *  @param status   resultado da operação anterior. Se < 0 é porque houve erro, e nesse caso afixa a mensagem de erro e sai com status -1
+ *  @param errorMsg mensagem de erro a apresentar em caso de erro
+ */
+#define exit_on_error(status, errorMsg) do { if (status < 0) { erro("%s: %s", errorMsg, strerror(errno)); exit(1); } } while (0)
+
+/**
+ *  Valida se uma operação teve sucesso ou não. Se não teve, escreve uma mensagem de erro e sai com erro -1, e mostrando a mensagem de erro,
+ *  @param status   resultado da operação anterior. Se == NULL é porque houve erro, e nesse caso afixa a mensagem de erro e sai com status -1
+ *  @param errorMsg mensagem de erro a apresentar em caso de erro
+ */
+#define exit_on_null(status, errorMsg) do { if (NULL == status) { erro("%s: %s", errorMsg, strerror(errno)); exit(1); } } while (0)
 
 /******************************************************************************
  *  Macros para leitura de Strings de um ficheiro ou do STDIN
@@ -62,21 +77,21 @@
  *  @param buffer_size   (int) tamanho do buffer acima (em bytes)
  *  @param file          (FILE*) handler do ficheiro a ler
  */
-#define my_fgets(buffer, buffer_size, file) ({ \
-    char* _result = fgets(buffer, buffer_size, file); \
-    if (NULL != _result) { \
-        while ('\n' == buffer[0]) \
+#define my_fgets(buffer, buffer_size, file) ({          \
+    char* _result = fgets(buffer, buffer_size, file);   \
+    if (NULL != _result) {                              \
+        while ('\n' == buffer[0])                       \
             _result = fgets(buffer, buffer_size, file); \
-        if ('\n' == buffer[strlen(buffer) - 1]) \
-            buffer[strlen(buffer) - 1] = '\0'; \
-        else { \
-            int c; \
-            do \
-                c = getc(file); \
-            while ('\n' != c && EOF != c); \
-        } \
-    } \
-    _result; \
+        if ('\n' == buffer[strlen(buffer) - 1])         \
+            buffer[strlen(buffer) - 1] = '\0';          \
+        else {                                          \
+            int c;                                      \
+            do                                          \
+                c = getc(file);                         \
+            while ('\n' != c && EOF != c);              \
+        }                                               \
+    }                                                   \
+    _result;                                            \
 })
 
 /**

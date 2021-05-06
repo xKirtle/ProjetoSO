@@ -1,245 +1,357 @@
 /******************************************************************************
- ** ISCTE-IUL: Trabalho prático de Sistemas Operativos
+ ** ISCTE-IUL: Trabalho prático 3 de Sistemas Operativos
  **
- ** Aluno: Nº: 98420   Nome: Rodrigo Martins 
- ** Nome do Módulo: servidor.c
+ ** Aluno: Nº:       Nome: 
+ ** Nome do Módulo: servidor.c v2
  ** Descrição/Explicação do Módulo: 
  **
- **   O módulo começa por se "registar", ou seja, guardar num ficheiro o seu
- ** process ID e ler todos os enfermeiros presentes no ficheiro dat. Depois,
- ** arma o sinal necessário para receber pedidos de vacinação de cidadãos e o
- ** sinal para terminar o servidor.
  **
- **   Quando receber um pedido de vacinação, o servidor vai ler a informação
- ** do cidadão presente no ficheiro pedidovacina.txt e vai tentar arranjar
- ** um enfermeiros no mesmo Centro de Saúde que esteja disponível para vacinar.
- ** 
- **   Se conseguir arranjar um enfermeiro que cumpra os requerimentos, o servidor
- ** vai criar um novo processo para tratar dessa vacinação, de modo a poder
- ** continuar à espera de novos pedidos de vacinação de outros utentes.
  ******************************************************************************/
-#include <unistd.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <sys/wait.h>
 #include "common.h"
+#include "utils.h"
+#include <sys/stat.h>
+#include <signal.h>
 
-Vaga vagas[NUM_VAGAS];
-int index_vagas;
-Enfermeiro *enfermeiros;
-int nr_enf; //Numero de enfermeiros no sistema
+/* Variáveis globais */
+int msg_id;             // ID da Fila de Mensagens IPC usada
+int sem_id;             // ID do array de Semáforos IPC usado
+int shm_id;             // ID da Memória Partilhada IPC usada
+Database* db;           // Database utilizada, que estará em Memória Partilhada
+MsgCliente mensagem;    // Variável que tem a mensagem enviada do Cidadao para o Servidor
+MsgServidor resposta;   // Variável que tem a mensagem de resposta enviadas do Servidor para o Cidadao
+int vaga_ativa;         // Índice da BD de Vagas que foi reservado pela função reserva_vaga()
 
-void registarServidor()
-{
-    FILE *servidor = fopen(FILE_PID_SERVIDOR, "w");
-    if (servidor != NULL)
-    {
-        fprintf(servidor, "%d", getpid());
-        sucesso("S1) Escrevi no ficheiro FILE_PID_SERVIDOR o PID: %d", getpid());
+/* Protótipos de funções */
+void init_ipc();                    // Função a ser implementada pelos alunos
+void init_database();               // Função a ser implementada pelos alunos
+void espera_mensagem_cidadao();     // Função a ser implementada pelos alunos
+void trata_mensagem_cidadao();      // Função a ser implementada pelos alunos
+void envia_resposta_cidadao();      // Função a ser implementada pelos alunos
+void cria_pedido();                 // Função a ser implementada pelos alunos
+void vacina();                      // Função a ser implementada pelos alunos
+void cancela_pedido();              // Função a ser implementada pelos alunos
+void servidor_dedicado();           // Função a ser implementada pelos alunos
+int reserva_vaga(int, int);         // Função a ser implementada pelos alunos
+void liberta_vaga(int);             // Função a ser implementada pelos alunos
+void termina_servidor(int);         // Função a ser implementada pelos alunos
+void termina_servidor_dedicado(int);// Função a ser implementada pelos alunos
+
+int main() {    // Não é suposto que os alunos alterem nada na função main()
+    signal(SIGINT, termina_servidor);   // Se receber <CTRL+C>, chama a função que termina o Servidor
+    signal(SIGCHLD, SIG_IGN);
+    // S1) Chama a função init_ipc(), que tenta criar uma fila de mensagens que tem a KEY IPC_KEY definida em common.h (alterar esta KEY para ter o valor do nº do aluno, como indicado nas aulas). Deve assumir que a fila de mensagens já foi criada. Se tal não aconteceu, dá erro e termina com exit status 1. Esta função, em caso de sucesso, preenche a variável global msg_id;
+    init_ipc();
+    // S2) Chama a função init_database(), que inicia a base de dados
+    init_database();
+    while (TRUE) {
+        // S3) Chama a função espera_mensagem_cidadao(), que espera uma mensagem (na fila de mensagens com o tipo = 1) e preenche a mensagem enviada pelo processo Cidadão na variável global mensagem; em caso de erro, termina com erro e exit status 1;
+        espera_mensagem_cidadao();
+        // S4) O comportamento do processo Servidor agora irá depender da mensagem enviada pelo processo Cidadão no campo pedido:
+        trata_mensagem_cidadao();
     }
-    else
-        erro("S1) Não consegui registar o servidor!");
-    fclose(servidor);
 }
 
-void lerEnfermeiros()
-{
-    FILE *enfData = fopen(FILE_ENFERMEIROS, "rb");
-    if (enfData != NULL)
-    {
-        fseek(enfData, 0, SEEK_END);
-        long fsize = ftell(enfData);
-        nr_enf = fsize / sizeof(Enfermeiro);
-        //Confirmar que malloc nao retorna um null pointer?
-        enfermeiros = (Enfermeiro *)malloc(nr_enf * sizeof(Enfermeiro));
-        fseek(enfData, 0, SEEK_SET);
+/**
+ * S1) Chama a função init_ipc(), que tenta criar:
+ *     • uma fila de mensagens IPC;
+ *     • um array de semáforos IPC de dimensão 1;
+ *     • uma memória partilhada IPC de dimensão suficiente para conter um elemento Database.
+ *     Todos estes elementos têm em comum serem criados com a KEY IPC_KEY definida em common.h (alterar esta KEY para ter o valor do nº do aluno, como indicado nas aulas), e com permissões 0600. Se qualquer um destes elementos IPC já existia anteriormente, dá erro e termina com exit status 1. Esta função, em caso de sucesso, preenche as variáveis globais respetivas msg_id, sem_id, e shm_id;
+ *     O semáforo em questão será usado com o padrão “Mutex”, pelo que será iniciado com o valor 1;
+ */
+void init_ipc() {
+    debug("<");
 
-        Enfermeiro enf[sizeof(Enfermeiro)];
-        for (int i = 0; i < nr_enf; i++)
-            if (fread(enf, sizeof(Enfermeiro), 1, enfData) == 1)
-                enfermeiros[i] = *enf;
+    // S1) Tenta criar:
+    // Todos estes elementos têm em comum serem criados com a KEY IPC_KEY definida em common.h (alterar esta KEY para ter o valor do nº do aluno, como indicado nas aulas), e com permissões 0600. Se qualquer um destes elementos IPC já existia anteriormente, dá erro e termina com exit status 1. Esta função, em caso de sucesso, preenche as variáveis globais respetivas msg_id, sem_id, e shm_id;
+    // • uma fila de mensagens IPC;
+    // exit_on_error(<var>, "init_ipc) Fila de Mensagens com a Key definida já existe ou não pode ser criada");
 
-        // Nao queremos libertar a memoria onde temos os enfermeiros..?
-        // free(enfermeiros);
+    debug(".");
+    // • um array de semáforos IPC de dimensão 1;
+    // exit_on_error(<var>, "init_ipc) Semáforo com a Key definida já existe ou não pode ser criada");
 
-        sucesso("S2) Ficheiro FILE_ENFERMEIROS tem %ld bytes, ou seja, %d enfermeiros", fsize, nr_enf);
+    debug(".");
+    // O semáforo em questão será usado com o padrão “Mutex”, pelo que será iniciado com o valor 1;
+    // exit_on_error(<var>, "init_ipc) Semáforo com a Key definida não pode ser iniciado com o valor 1");
 
-        for (int i = 0; i < NUM_VAGAS; i++)
-            vagas[i].index_enfermeiro = -1;
-        sucesso("S3) Iniciei a lista de %d vagas", NUM_VAGAS);
-    }
-    else
-        erro("S2) Não consegui ler o ficheiro FILE_ENFERMEIROS!");
+    debug(".");
+    // • uma memória partilhada IPC de dimensão suficiente para conter um elemento Database.
+    // exit_on_error(<var>, "init_ipc) Memória Partilhada com a Key definida já existe ou não pode ser criada");
+
+    // sucesso("S1) Criados elementos IPC com a Key %x: MSG %d, SEM %d, SHM %d", IPC_KEY, msg_id, sem_id, shm_id);
+    debug(">");
 }
 
-Cidadao lerCidadao()
-{
-    Cidadao cidadao;
+/**
+ * Lê um ficheiro binário
+ * @param   filename    Nome do ficheiro a ler
+ * @param   buffer      Ponteiro para o buffer onde armazenar os dados
+ * @param   maxsize     Tamanho máximo do ficheiro a ler
+ * @return              Número de bytes lidos, ou 0 em caso de erro
+ */
+size_t read_binary( char* filename, void* buffer, const size_t maxsize ) {
+    struct stat st;
+    // A função stat() preenche uma estrutura com dados do ficheiro, incluindo o tamanho do ficheiro.
+    // stat() retorna -1 se erro
+    exit_on_error(stat(filename, &st), "read_binary) Erro no cálculo do tamanho do ficheiro");
+    // O tamanho do ficheiro é maior do que o tamanho do buffer alocado?
+    if (st.st_size > maxsize)
+        exit_on_error(-1, "read_binary) O buffer não tem espaço para o ficheiro");
 
-    if (access(FILE_PEDIDO_VACINA, F_OK) != 0)
-        erro("S5.1) Não foi possível abrir o ficheiro FILE_PEDIDO_VACINA");
+    FILE* f = fopen(filename, "r");
+    // fopen retorna NULL se erro
+    exit_on_null(f, "read_binary) Erro na abertura do ficheiro");
 
-    FILE *cidData = fopen(FILE_PEDIDO_VACINA, "r");
-    if (cidData != NULL)
-    {
-        char buffer[1024];
-        my_fgets(buffer, sizeof(buffer), cidData);
-        int scan = sscanf(buffer, "%d:%[^:]:%d:%[^:]:%[^:]:%d:%d", &cidadao.num_utente, cidadao.nome, &cidadao.idade,
-                          cidadao.localidade, cidadao.nr_telemovel, &cidadao.estado_vacinacao, &cidadao.PID_cidadao);
+    // fread está a ler st.st_size elementos, logo retorna um valor < st.st_size se erro
+    if (fread(buffer, 1, st.st_size, f) < st.st_size)
+        exit_on_error(-1, "read_binary) Erro na leitura do ficheiro");
 
-        printf("Chegou o cidadão com o pedido nº %d, com nº utente %d, para ser vacinado no Centro de Saúde %s\n",
-               cidadao.PID_cidadao, cidadao.num_utente, cidadao.localidade);
-        sucesso("S5.1) Dados Cidadão: %d; %s; %d; %s; %s; %d", cidadao.num_utente, cidadao.nome, cidadao.idade,
-                cidadao.localidade, cidadao.nr_telemovel, cidadao.estado_vacinacao);
-    }
-    else
-        erro("S5.1) Não foi possível abrir o ficheiro FILE_PEDIDO_VACINA");
-
-    return cidadao;
+    fclose(f);
+    return st.st_size; // retorna o tamanho do ficheiro
 }
 
-int arranjarEnfermeiro(Cidadao cidadao)
-{
-    for (int i = 0; i < nr_enf; i++)
-    {
-        if (strcmp(enfermeiros[i].CS_enfermeiro, cidadao.localidade) == 0)
-        {
-            if (enfermeiros[i].disponibilidade == 1)
-            {
-                sucesso("S5.2.1) Enfermeiro %d disponível para o pedido %d", i, cidadao.PID_cidadao);
+/**
+ * Grava um ficheiro binário
+ * @param   filename    Nome do ficheiro a escrever
+ * @param   buffer      Ponteiro para o buffer que contém os dados
+ * @param   size        Número de bytes a escrever
+ * @return              Número de bytes escrever, ou 0 em caso de erro
+ */
+size_t save_binary(char* filename, void* buffer, const size_t size) {
+    FILE* f = fopen(filename, "w");
+    // fopen retorna NULL se erro
+    exit_on_null(f, "save_binary) Erro na abertura do ficheiro");
+   
+    // fwrite está a escrever size elementos, logo retorna um valor < size se erro
+    if (fwrite(buffer, 1, size, f) < size)
+        exit_on_error(-1, "save_binary) Erro na escrita do ficheiro");
 
-                for (index_vagas = 0; index_vagas < NUM_VAGAS; index_vagas++)
-                    if (vagas[index_vagas].index_enfermeiro == -1)
-                        break;
-
-                if (index_vagas != NUM_VAGAS) //existem vagas
-                {
-                    sucesso("S5.2.2) Há vaga para vacinação para o pedido %d", cidadao.PID_cidadao);
-
-                    enfermeiros[i].disponibilidade = 0;
-                    Vaga vaga = {cidadao.PID_cidadao, cidadao, i};
-                    vagas[index_vagas] = vaga;
-
-                    sucesso("S5.3) Vaga nº %d preenchida para o pedido %d", index_vagas, cidadao.PID_cidadao);
-                }
-                else
-                {
-                    kill(cidadao.PID_cidadao, SIGTERM);
-                    erro("S5.2.2) Não há vaga para vacinação para o pedido %d", cidadao.PID_cidadao);
-                    return -1;
-                }
-            }
-            else
-            {
-                kill(cidadao.PID_cidadao, SIGTERM);
-                erro("S5.2.1) Enfermeiro %d indisponível para o pedido %d para o Centro de Saúde %s", i, cidadao.PID_cidadao, enfermeiros[i].CS_enfermeiro);
-                return -1;
-            }
-        }
-    }
-
-    return 0;
+    fclose(f);
+    return size;
 }
 
-void handleSIGCHLD(int signal)
-{
-    //hexdump -e '"%i, %20.100s, %12.100s, %i, %i\n"' enfermeiros.dat
+/**
+ * S2) Inicia a base de dados:
+ *     • Associa a variável global db com o espaço de Memória Partilhada alocado para shm_id; se não o conseguir, dá erro e termina com exit status 1;
+ *     • Lê o ficheiro FILE_CIDADAOS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->cidadaos e db->num_cidadaos. Se não o conseguir, dá erro e termina com exit status 1;
+ *     • Lê o ficheiro FILE_ENFERMEIROS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->enfermeiros e db->num_enfermeiros. Se não o conseguir, dá erro e termina com exit status 1;
+ *     • Inicia o array db->vagas, colocando todos os campos de todos os elementos com o valor -1.
+ */
+void init_database() {
+    debug("<");
 
-    //Servidor-Filho terminou e chama isto?
-    //S5.5.2??
-    
-    int pid = wait(NULL);
+    // S2) Inicia a base de dados:
+    // • Associa a variável global db com o espaço de Memória Partilhada alocado para shm_id; se não o conseguir, dá erro e termina com exit status 1;
+    // exit_on_null(<var>, "init_database) Erro a ligar a Memória Dinâmica ao projeto");
 
-    //Vaga libertada?
-    int enfIndex = vagas[index_vagas].index_enfermeiro;
-    sucesso("S5.5.3.1) Vaga %d que era do servidor dedicado %d libertada", index_vagas, vagas[index_vagas].PID_filho);
-    vagas[index_vagas].index_enfermeiro = -1;
+    debug(".");
+    // • Lê o ficheiro FILE_CIDADAOS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->cidadaos e db->num_cidadaos. Se não o conseguir, dá erro e termina com exit status 1;
+ 
+    debug(".");
+    // • Lê o ficheiro FILE_ENFERMEIROS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->enfermeiros e db->num_enfermeiros. Se não o conseguir, dá erro e termina com exit status 1;
+ 
+    debug(".");
+    // • Inicia o array db->vagas, colocando todos os campos de todos os elementos com o valor -1.
 
-    enfermeiros[enfIndex].disponibilidade = 1;
-    sucesso("S5.5.3.2) Enfermeiro %d atualizado para disponível", enfIndex);
-
-    enfermeiros[enfIndex].num_vac_dadas += 1;
-    sucesso("S5.5.3.3) Enfermeiro %d atualizado para %d vacinas dadas", enfIndex, enfermeiros[enfIndex].num_vac_dadas);
-
-    //ATUALIZAR ENFERMEIROS.DAT -> S5.5.3.4
-    //Modificar apenas o nr de vacinas em vez do ficheiro todo?
-
-    FILE *enfData = fopen(FILE_ENFERMEIROS, "wb");
-    if (enfData != NULL)
-    {
-        for (int i = 0; i < nr_enf; i++)
-            fwrite(&enfermeiros[i], sizeof(Enfermeiro), 1, enfData);
-
-        sucesso("S5.5.3.4) Ficheiro FILE_ENFERMEIROS %d atualizado para %d vacinas dadas", enfIndex, enfermeiros[enfIndex].num_vac_dadas);
-    }
-    fclose(enfData);
-
-    kill(vagas[index_vagas].cidadao.PID_cidadao, SIGUSR2);
-    sucesso("S5.5.3.5) Retorna");
+    // sucesso("S2) Base de dados carregada com %d cidadãos e %d enfermeiros", <num_cidadaos>, <num_enfermeiros>);
+    debug(">");
 }
 
-void handleSIGTERM(int signal) //Chamado pelo filho
-{
-    kill(vagas[index_vagas].cidadao.PID_cidadao, SIGTERM);
-    kill(vagas[index_vagas].PID_filho, SIGTERM); //S5.6.1?
-    sucesso("S5.6.1) SIGTERM recebido, servidor dedicado termina Cidadão");
+/**
+ * S3) Espera uma mensagem (na fila de mensagens com o tipo = 1) e preenche a mensagem enviada pelo processo Cidadão na variável global mensagem;
+ *     em caso de erro, termina com erro e exit status 1;
+ */
+void espera_mensagem_cidadao() {
+    debug("<");
+
+    // S3) Espera uma mensagem (na fila de mensagens com o tipo = 1) e preenche a mensagem enviada pelo processo Cidadão na variável global mensagem; em caso de erro, termina com erro e exit status 1;
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // exit_on_error(<var>, "Não é possível ler a mensagem do Cidadao");
+    // sucesso("Cidadão enviou mensagem");
+
+    debug(">");
+}
+
+/**
+ * S4) O comportamento do processo Servidor agora irá depender da variável global mensagem enviada pelo processo Cidadão no campo pedido
+ */
+void trata_mensagem_cidadao() {
+    debug("<");
+
+    // if (...) {
+        // S4.1) Se o pedido for PEDIDO, imprime uma mensagem e avança para o passo S5;
+        // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+        // sucesso("S4.1) Novo pedido de vacinação de %d para %s", <PID_cidadao>, <num_utente>);
+        debug(".");
+        cria_pedido();
+    // } else if (...) {
+        // S4.2) Se o estado for CANCELAMENTO, imprime uma mensagem, e avança para o passo S10;
+        // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+        // sucesso("S4.2) Cancelamento de vacinação de %d para %s", <PID_cidadao>, <num_utente>);
+        debug(".");
+        cancela_pedido();
+    // }
+
+    debug(">");
+}
+
+/**
+ * Estando a mensagem de resposta do processo Servidor na variável global resposta, envia essa mensagem para a fila de mensagens com o tipo = PID_Cidadao 
+ */
+void envia_resposta_cidadao() {
+    debug("<");
+
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // exit_on_error(<var>, "Não é possível enviar resposta para o cidadão");
+    // sucesso("Resposta para o cidadão enviada");
+
+    debug(">");
+}
+
+/**
+ * S5) Processa um pedido de vacinação e envia uma resposta ao processo Cidadão. Para tal, essa função faz vários checks, atualizando o campo status da resposta:
+ */
+void cria_pedido() {
+    debug("<");
+
+    // S5.1) Procura o num_utente e nome na base de dados (BD) de Cidadãos:
+    //       • Se o num_utente e nome do utilizador for encontrado na BD Cidadãos, os dados do cidadão deverão ser copiados da BD Cidadãos para o campo cidadao da resposta;
+    //       • Se o utilizador (Cidadão) não for encontrado na BD Cidadãos => status = DESCONHECIDO;
+    //       • Se o Cidadão na BD Cidadãos tiver estado_vacinacao >= 2 => status = VACINADO;
+    //       • Se o Cidadão na BD Cidadãos tiver estado_vacinacao < 0 => status = EMCURSO.
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // erro("S5.1) Cidadão %d, %s  não foi encontrado na BD Cidadãos", <num_utente>, <nome>);
+    // sucesso("S5.1) Cidadão %d, %s encontrado, estado_vacinacao=%d, status=%d", <num_utente>, <nome>, <estado_vacinacao>, <status>);
+
+    debug(".");
+    // S5.2) Caso o Cidadão esteja em condições de ser vacinado (i.e., se status não for DESCONHECIDO, VACINADO nem EMCURSO), procura o enfermeiro correspondente na BD Enfermeiros:
+    //       • Se não houver centro de saúde, ou não houver nenhum enfermeiro no centro de saúde correspondente  status = NAOHAENFERMEIRO;
+    //       • Se há enfermeiro, mas este não tiver disponibilidade => status = AGUARDAR.
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // erro("S5.2) Enfermeiro do CS %s não foi encontrado na BD Cidadãos", <localidade>);
+    // sucesso("S5.2) Enfermeiro do CS %s encontrado, disponibilidade=%d, status=%d", <localidade>, <disponibilidade>, <status>);
+
+    debug(".");
+    // S5.3) Caso o enfermeiro esteja disponível, procura uma vaga para vacinação na BD Vagas. Para tal, chama a função reserva_vaga(Index_Cidadao, Index_Enfermeiro) usando os índices do Cidadão e do Enfermeiro nas respetivas BDs:
+    //      • Se essa função tiver encontrado e reservado uma vaga => status = OK;
+    //      • Se essa função não conseguiu encontrar uma vaga livre => status = AGUARDAR.
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // erro("S5.3) Não foi encontrada nenhuma vaga livre para vacinação");
+    // sucesso("S5.3) Foi reservada a vaga %d para vacinação, status=%d", <index_vaga>, <status>);
+
+    debug(".");
+    // S5.4) Se no final de todos os checks, status for OK, chama a função vacina().
+    // if (OK == <status>)
+    //    vacina();
+
+    debug(">");
+}
+
+/**
+ * S6) Processa a vacinação
+ */
+void vacina() {
+    debug("<");
+
+    // S6.1) Cria um processo filho através da função fork();
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // erro("S6.1) Não foi possível criar um novo processo");
+    // sucesso("S6.1) Criado um processo filho com PID_filho=%d", <PID_filho>);
+
+    debug(".");
+    // if (...) {   // Processo FILHO
+        // S6.2) O processo filho chama a função servidor_dedicado();
+        // servidor_dedicado();
+    // } else {     // Processo PAI
+        debug(".");
+        // S6.3) O processo pai regista o process ID do processo filho no campo PID_filho na BD de Vagas com o índice da variável global vaga_ativa;
+    //}
+
+    debug(">");
+}
+
+/**
+ * S7) Servidor Dedicado
+ */
+void servidor_dedicado() {
+    debug("<");
+
+    // S7.1) Arma o sinal SIGTERM;
+    signal(SIGTERM, termina_servidor_dedicado);
+
+    debug(".");
+    // S7.2) Envia a resposta para o Cidadao, chamando a função envia_resposta_cidadao(). Implemente também esta função, que envia a mensagem resposta para o cidadao, contendo os dados do Cidadao preenchidos em S5.1 e o campo status = OK;
+    envia_resposta_cidadao();
+
+    debug(".");
+    // S7.3) Coloca a disponibilidade do enfermeiro afeto à vaga_ativa com o valor 0 (Indisponível);
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // sucesso("S7.3) Enfermeiro associado à vaga %d indisponível", <vaga_ativa>);
+
+    debug(".");
+    // S7.4) Imprime uma mensagem;
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // sucesso("S7.4) Vacina em curso para o cidadão %d, %s, e com o enfermeiro %d, %s na vaga %d", <num_utente>, <nome cidadao>, <ced_profissional>, <nome enfermeiro>, <vaga_ativa>);
+    // S7.4) Aguarda (em espera passiva!) TEMPO_CONSULTA segundos;
+
+    debug(".");
+    // S7.5) Envia nova resposta para o Cidadao, chamando a função envia_resposta_cidadao() contendo os dados do Cidadao preenchidos em S5.1 e o campo status = OK, para indicar que a consulta terminou com sucesso;
+    envia_resposta_cidadao();
+
+    debug(".");
+    // S7.6) Atualiza os dados do cidadão (estado_vacinacao) na BD de Cidadãos
+    // S7.6) Atualiza os dados do enfermeiro (incrementa nr_vacinas_dadas) na BD de Enfermeiros;
+    // S7.6) Atualiza os dados do enfermeiro (coloca disponibilidade=1) na BD de Enfermeiros;
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // sucesso("S7.6) Cidadão atualizado na BD para estado_vacinacao=%d, Enfermeiro atualizado na BD para nr_vacinas_dadas=%d e disponibilidade=%d", <estado_vacinacao>, <nr_vacinas_dadas>, <disponibilidade>);
+
+    debug(".");
+    // S7.7) Liberta a vaga vaga_ativa da BD de Vagas, invocando a função liberta_vaga(vaga_ativa);
+    liberta_vaga(vaga_ativa);
+
+    debug(".");
+    // S7.8) Termina o processo Servidor Dedicado (filho) com exit status 0.
     exit(0);
+
+    debug(">");
 }
 
-void handleSIGINT(int signal) //Chamado pelo pai
-{
-    for (int i = 0; i < NUM_VAGAS; i++)
-        kill(vagas[i].PID_filho, SIGTERM);
+/**
+ * S8) Tenta reservar uma vaga livre na BD de Vagas
+ */
+int reserva_vaga(int index_cidadao, int index_enfermeiro) {
+    debug("<");
 
-    remove(FILE_PID_SERVIDOR);
-    sucesso("S6) Servidor terminado");
-    exit(0);
+    vaga_ativa = -1;
+    // S8.1) Procura uma vaga livre (index_cidadao < 0) na BD de Vagas. Se encontrar uma entrada livre:
+
+    debug(".");
+    // S8.1.1) Atualiza o valor da variável global vaga_atual com o índice da vaga encontrada;
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // sucesso("S8.1.1) Encontrou uma vaga livre com o index %d", <vaga_ativa>);
+
+    debug(".");
+    // S8.1.2) Atualiza a entrada de Vagas vaga_ativa com o índice do cidadão e do enfermeiro
+
+    debug(".");
+    // S8.1.3) Retorna o valor do índice de vagas vaga_ativa ou -1 se não encontrou nenhuma vaga
+    return vaga_ativa;
+
+    debug(">");
 }
 
-void vacinarPedido(Cidadao cidadao)
-{
-    int value = fork(); // =0 -> child, >0 -> parent (value->childPID), =-1 error
-    if (value == -1)
-        erro("S5.4) Não foi possível criar o servidor dedicado");
-    else if (value != 0) //Parent
-    {
-        sucesso("S5.4) Servidor dedicado %d criado para o pedido %d", value, cidadao.PID_cidadao);
-        vagas[index_vagas].PID_filho = value;
-        sucesso("S5.5.1) Servidor dedicado %d na vaga %d", value, index_vagas);
-        signal(SIGCHLD, handleSIGCHLD);
-        sucesso("S5.5.2) Servidor aguarda fim do servidor dedicado %d", value);
-    }
-    else //value == 0 -> Child
-    {
-        signal(SIGTERM, handleSIGTERM);
-        kill(cidadao.PID_cidadao, SIGUSR1);
-        sucesso("S5.6.2) Servidor dedicado inicia consulta de vacinação");
-        sleep(TEMPO_CONSULTA);
-        sucesso("S5.6.3) Vacinação terminada para o cidadão com o pedido nº %d", cidadao.PID_cidadao);
-        kill(cidadao.PID_cidadao, SIGUSR2);
-        sucesso("S5.6.4) Servidor dedicado termina consulta de vacinação");
-        exit(0); //Chama o SIGCHLD automaticamente no pai
-    }
+/**
+ * S9) Tenta libertar uma vaga na BD de Vagas, liberta a vaga da BD de Vagas, colocando o campo index_cidadao dessa entrada da BD de Vagas com o valor -1
+ */
+void liberta_vaga(int index_vaga) {
+    debug("<");
+
+    //  S9) Tenta libertar uma vaga na BD de Vagas, liberta a vaga da BD de Vagas, colocando o campo index_cidadao dessa entrada da BD de Vagas com o valor -1
+
+    debug(">");
 }
 
-void handleSIGUSRone(int signal)
-{
-    Cidadao cidadao = lerCidadao();
-    int available = arranjarEnfermeiro(cidadao);
-
-    if (available == 0)
-        vacinarPedido(cidadao);
-}
-
-int main()
-{
-    registarServidor();
-    lerEnfermeiros();
-
-    signal(SIGUSR1, handleSIGUSRone);
-    signal(SIGINT, handleSIGINT);
-    sucesso("S4) Servidor espera pedidos");
-
-    while (1)
-        pause();
-}
+void termina_servidor(int sinal) {}         // Função a ser implementada pelos alunos
+void termina_servidor_dedicado(int sinal) {} // Função a ser implementada pelos alunos
+void cancela_pedido() {}              // Função a ser implementada pelos alunos
