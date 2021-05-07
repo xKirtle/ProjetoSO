@@ -119,10 +119,9 @@ void espera_resposta_servidor() {
 int trata_resposta_servidor() {
     
     Cidadao cidadao = resposta.dados.cidadao;
-    int status = -1;
+    int status = 0;
     //debug(".") statements?
-    switch (resposta.dados.status)
-    {
+    switch (resposta.dados.status) {
         case DESCONHECIDO:
             erro("C5.1) Não existe registo do utente %d, %s", cidadao.num_utente, cidadao.nome);
             debug(".");
@@ -148,6 +147,7 @@ int trata_resposta_servidor() {
 
         case OK:
             sucesso("C5.5) Utente %d, %s, vai agora ser vacinado", cidadao.num_utente, cidadao.nome);
+            debug(".");
             status = 1;
             break;
 
@@ -199,22 +199,19 @@ void print_info(Cidadao cidadao) {
 void vacina() {
     debug("<");
 
-    // C6.1) Chama a função print_info(cidadao) com a informação recebida na resposta do processo Servidor, que irá imprimir a informação completa sobre o cidadão que vai ser vacinado;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("C6.1) Dados completos sobre o cidadão a ser vacinado");
-    // print_info(...);
+    print_info(resposta.dados.cidadao);
+    sucesso("C6.1) Dados completos sobre o cidadão a ser vacinado");
 
-    // C6.2) Chama novamente a função espera_resposta_servidor(), que espera uma nova resposta do processo Servidor (na fila de mensagens com o tipo = PID_Cidadao) e preenche a mensagem enviada pelo processo Servidor na variável global resposta;
+    espera_resposta_servidor();
 
-    // C6.3) O comportamento do processo Cidadão agora irá depender da resposta enviada pelo processo Servidor no campo status:
-
-    // C6.3.1) Se o status for OK, imprime uma mensagem de sucesso, e termina com exit status 0;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("C6.3.1) Utente %d, %s vacinado com sucesso", <num_utente>, <nome>);
-
-    // C6.3.2) Se o status não for OK, imprime uma mensagem de erro, e termina com exit status 1;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // erro("C6.3.2) O servidor cancelou a vacinação em curso");
+    StatusServidor status = resposta.dados.status;
+    if (status == TERMINADA) {
+        sucesso("C6.3.1) Utente %d, %s vacinado com sucesso", cidadao.num_utente, cidadao.nome);
+        exit(0);
+    } else if (status == CANCEL) {
+        erro("C6.3.2) O servidor cancelou a vacinação em curso");
+        exit(1);
+    }
 
     debug(">");
 }
@@ -231,30 +228,27 @@ void vacina() {
 void cancela_pedido(int sinal) {
     debug("<");
 
-    // C7.1) Escreve no ecrã uma mensagem;
-    // Outputs esperados (os itens entre <> deverão ser substituídos pelos valores correspondentes):
-    // sucesso("C7.1) O cidadão cancelou a vacinação no processo %d", <PID_Cidadao>);
+    sucesso("C7.1) O cidadão cancelou a vacinação no processo %d", getpid());
 
     debug(".");
-    // C7.2) Altera a variável global mensagem, tornando pedido = CANCELAMENTO. Chama a função envia_mensagem_servidor(), que envia a mensagem para a fila de mensagens; em caso de erro no envio, afixa uma mensagem de erro e termina com exit status 1;
+
+    mensagem.dados.pedido = CANCELAMENTO;
     envia_mensagem_servidor();
 
     debug(".");
-    // C7.3) Chama novamente a função espera_resposta_servidor(), que espera uma nova resposta do processo Servidor (na fila de mensagens com o tipo = PID_Cidadao) e preenche a mensagem enviada pelo processo Servidor na variável global resposta;
+    
     espera_resposta_servidor();
 
     debug(".");
-    // C7.4) O comportamento do processo Cidadão agora irá depender da resposta enviada pelo processo Servidor no campo status:
 
-    debug(".");
-    // C7.4.1) Se o status for CANCEL, imprime uma mensagem de sucesso, e termina com exit status 0;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("C7.4.1) Servidor confirmou cancelamento");
-
-    debug(".");
-    // C7.4.2) Se o status for TERMINADA, imprime mensagem sucesso, termina com exit status 0;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("C7.4.2) A vacinação já tinha sido concluída");
+    StatusServidor status = resposta.dados.status;
+    if (status == CANCEL) {
+        sucesso("C7.4.1) Servidor confirmou cancelamento");
+        exit(0);
+    } else if (status == TERMINADA) {
+        sucesso("C7.4.2) A vacinação já tinha sido concluída");
+        exit(0);
+    }
 
     debug(">");
 }
