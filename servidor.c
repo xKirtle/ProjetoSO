@@ -153,20 +153,25 @@ void init_database()
 {
     debug("<");
 
-    // S2) Inicia a base de dados:
-    // • Associa a variável global db com o espaço de Memória Partilhada alocado para shm_id; se não o conseguir, dá erro e termina com exit status 1;
-    // exit_on_null(<var>, "init_database) Erro a ligar a Memória Dinâmica ao projeto");
+    shmat(shm_id, &db, 0);
+    exit_on_null(db, "init_database) Erro a ligar a Memória Dinâmica ao projeto");
 
     debug(".");
-    // • Lê o ficheiro FILE_CIDADAOS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->cidadaos e db->num_cidadaos. Se não o conseguir, dá erro e termina com exit status 1;
+
+    int size = read_binary(FILE_CIDADAOS, db->cidadaos, sizeof(Cidadao));
+    db->num_cidadaos = size / sizeof(Cidadao);
 
     debug(".");
-    // • Lê o ficheiro FILE_ENFERMEIROS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->enfermeiros e db->num_enfermeiros. Se não o conseguir, dá erro e termina com exit status 1;
+
+    size = read_binary(FILE_ENFERMEIROS, db->cidadaos, sizeof(Enfermeiro));
+    db->num_enfermeiros = size / sizeof(Enfermeiro);
 
     debug(".");
-    // • Inicia o array db->vagas, colocando todos os campos de todos os elementos com o valor -1.
 
-    // sucesso("S2) Base de dados carregada com %d cidadãos e %d enfermeiros", <num_cidadaos>, <num_enfermeiros>);
+    for (int i = 0; i < MAX_VAGAS; i++)
+        db->vagas[i] = (Vaga){-1, -1, -1};
+
+    sucesso("S2) Base de dados carregada com %d cidadãos e %d enfermeiros", db->num_cidadaos, db->num_enfermeiros);
     debug(">");
 }
 
