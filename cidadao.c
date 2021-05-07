@@ -50,9 +50,10 @@ int main() {    // Não é suposto que os alunos alterem nada na função main()
 void init_ipc() {
     debug("<");
 
-    // Outputs esperados (os itens entre <> deverão ser substituídos pelos valores correspondentes):
-    // exit_on_error(<var>, "init_ipc) Fila de Mensagens com a Key definida não existe ou não pode ser aberta");
-    // sucesso("C1) Fila de Mensagens com a Key %x aberta com o ID %d", IPC_KEY, msg_id);
+    int msgId = msgget(IPC_KEY, IPC_EXCL);
+    exit_on_error(1, "init_ipc) Fila de Mensagens com a Key definida não existe ou não pode ser aberta");
+    sucesso("C1) Fila de Mensagens com a Key %x aberta com o ID %d", IPC_KEY, msg_id);
+    msg_id = msgId;
 
     debug(">");
 }
@@ -64,14 +65,24 @@ void init_ipc() {
 void cria_mensagem() {
     debug("<");
 
-    // C2.1) Pede ao Cidadão (utilizador) os seus dados, nomeadamente o número de utente e nome, obrigatoriamente nessa ordem, preenchendo os dados na variável global mensagem;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("C2.1) Dados Cidadão: %d, %s", <num_utente>, <nome>);
+    char num_utente[6];
+    printf("Introduza o seu número de utente: ");
+    my_gets(num_utente, 6);
+
+    char nome[100];
+    printf("Introduza o seu nome: ");
+    my_gets(nome, 100);
+
+    mensagem.dados.num_utente = atoi(num_utente);
+    mensagem.dados.nome = nome;
+    sucesso("C2.1) Dados Cidadão: %d, %s", atoi(num_utente), nome);
 
     debug(".");
-    // C2.2) Preenche os campos PID_cidadao da variável global mensagem com o PID deste processo Cidadão, tipo da mensagem com o tipo 1, e pedido = PEDIDO;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("C2.2) PID Cidadão: %d", <PID_Cidadao>);
+
+    mensagem.tipo = 1;
+    mensagem.dados.PID_cidadao = getpid();
+    mensagem.dados.pedido = PEDIDO;
+    sucesso("C2.2) PID Cidadão: %d", mensagem.dados.PID_cidadao);
 
     debug(">");
 }
@@ -82,10 +93,9 @@ void cria_mensagem() {
 void envia_mensagem_servidor() {
     debug("<");
 
-    // C3) Envia uma mensagem para a fila de mensagens com tipo 1, com pedido = PEDIDO e os dados do cidadão; em caso de erro, termina com erro e exit status 1.
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // exit_on_error(<var>, "Não é possível enviar mensagem para o servidor");
-    // sucesso("Mensagem para o servidor enviada");
+    int sendStatus = msgsnd(msg_id, mensagem, sizeof(MsgCliente), 0);
+    exit_on_error(sendStatus, "Não é possível enviar mensagem para o servidor");
+    sucesso("Mensagem para o servidor enviada");
 
     debug(">");
 }
@@ -96,12 +106,56 @@ void envia_mensagem_servidor() {
 void espera_resposta_servidor() {
     debug("<");
 
-    // Espera a resposta do processo Servidor (na fila de mensagens com o tipo = PID_Cidadao) e preenche a mensagem enviada pelo processo Servidor na variável global resposta; 
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // exit_on_error(<var>, "Não é possível ler a resposta do servidor");
-    // sucesso("Servidor enviou resposta");
+    int receiveStatus = msgrcv(msg_id, resposta, sizeof(MsgServidor), getpid(), 0);
+    exit_on_error(receiveStatus, "Não é possível ler a resposta do servidor");
+    sucesso("Servidor enviou resposta");
 
     debug(">");
+}
+
+/**
+ * Trata a resposta devolvida pelo servidor 
+ */
+int trata_resposta_servidor() {
+    
+    Cidadao cidadao = resposta.dados.cidadao;
+    int status = -1;
+    //debug(".") statements?
+    switch (resposta.dados.status)
+    {
+        case DESCONHECIDO:
+            erro("C5.1) Não existe registo do utente %d, %s", cidadao.num_utente, cidadao.nome);
+            debug(".");
+            exit(1);
+            break;
+        case VACINADO:
+            sucesso("C5.2) O utente %d, %s foi vacinado", cidadao.num_utente, cidadao.nome);
+            debug(".");
+            exit(0);
+            break;
+
+        case EMCURSO:
+            sucesso("C5.3) A vacinação do utente %d, %s já está em curso", cidadao.num_utente, cidadao.nome);
+            debug(".");
+            exit(0);
+            break;
+
+        case AGUARDAR:
+            sucesso("C5.4) Utente %d, %s, por favor aguarde...", cidadao.num_utente, cidadao.nome);
+            debug(".");
+            sleep(TEMPO_ESPERA);
+            break;
+
+        case OK:
+            sucesso("C5.5) Utente %d, %s, vai agora ser vacinado", cidadao.num_utente, cidadao.nome);
+            status = 1;
+            break;
+
+        default:
+            break;
+    }
+
+    return status;
 }
 
 /**
@@ -110,38 +164,16 @@ void espera_resposta_servidor() {
 void pedido() {
     debug("<");
 
-    // do {
+    StatusServidor status = DESCONHECIDO;
+    do {
         // C3) Envia um pedido de consulta de vacinação para o processo Servidor, chamando a função envia_mensagem_servidor(), que envia uma mensagem para a fila de mensagens com tipo 1, com pedido = PEDIDO e os dados do cidadão; em caso de erro, termina com erro e exit status 1.
         envia_mensagem_servidor();
         // C4) Chama a função espera_resposta_servidor(), que espera a resposta do processo Servidor (na fila de mensagens com o tipo = PID_Cidadao) e preenche a mensagem enviada pelo processo Servidor na variável global resposta; em caso de erro, termina com erro e exit status 1.
         espera_resposta_servidor();
-
         // C5) O comportamento do processo Cidadão agora irá depender da resposta enviada pelo processo Servidor no campo status:
-
-        // C5.1) Se o status for DESCONHECIDO, imprime uma mensagem de erro, e termina com exit status 1;
-        // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-        // erro("C5.1) Não existe registo do utente %d, %s", <num_utente>, <nome>);
-
-        debug(".");
-        // C5.2) Se o status for VACINADO, imprime uma mensagem de sucesso, e termina com exit status 0;
-        // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-        // sucesso("C5.2) O utente %d, %s foi vacinado", <num_utente>, <nome>);
-
-        debug(".");
-        // C5.3) Se o status for EMCURSO, imprime uma mensagem de sucesso, e termina com exit status 0;
-        // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-        // sucesso("C5.3) A vacinação do utente %d, %s já está em curso", <num_utente>, <nome>);
-
-        debug(".");
-        // C5.4) Se o status for AGUARDAR, imprime uma mensagem de sucesso, aguarda (sem espera ativa!) um tempo correspondente a TEMPO_ESPERA segundos, e depois retorna ao ponto C3;
-        // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-        // sucesso("C5.4) Utente %d, %s, por favor aguarde...", <num_utente>, <nome>);
-
-        debug(".");
-        // C5.5) Se o status for OK, imprime uma mensagem de sucesso, e depois vai para o ponto C6.
-        // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-        // sucesso("C5.5) Utente %d, %s, vai agora ser vacinado", <num_utente>, <nome>);
-    // } while (OK != <status>);
+        if (trata_resposta_servidor() == 1) 
+            status = OK;
+    } while (OK != status);
 
     debug(">");
 }

@@ -13,7 +13,7 @@
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
-#define IPC_KEY 0x0a123456      // KEY para todos os elementos de IPC utilizados. Esta KEY deverá ser substituída pelo nº de aluno
+#define IPC_KEY 0x0a98420      // KEY para todos os elementos de IPC utilizados. Esta KEY deverá ser substituída pelo nº de aluno
 
 #define FILE_ENFERMEIROS   "enfermeiros.dat"    // Ficheiro que tem a lista de enfermeiros associados aos Centros de Saúde para vacinação
 #define FILE_CIDADAOS      "cidadaos.dat"       // Ficheiro que tem a lista de enfermeiros associados aos Centros de Saúde para vacinação
