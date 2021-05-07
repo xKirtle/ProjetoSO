@@ -15,6 +15,7 @@
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <sys/sem.h>
+#include <sys/shm.h>
 
 /* Variáveis globais */
 int msg_id;           // ID da Fila de Mensagens IPC usada
