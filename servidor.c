@@ -11,39 +11,45 @@
 #include "utils.h"
 #include <sys/stat.h>
 #include <signal.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+#include <sys/sem.h>
 
 /* Variáveis globais */
-int msg_id;             // ID da Fila de Mensagens IPC usada
-int sem_id;             // ID do array de Semáforos IPC usado
-int shm_id;             // ID da Memória Partilhada IPC usada
-Database* db;           // Database utilizada, que estará em Memória Partilhada
-MsgCliente mensagem;    // Variável que tem a mensagem enviada do Cidadao para o Servidor
-MsgServidor resposta;   // Variável que tem a mensagem de resposta enviadas do Servidor para o Cidadao
-int vaga_ativa;         // Índice da BD de Vagas que foi reservado pela função reserva_vaga()
+int msg_id;           // ID da Fila de Mensagens IPC usada
+int sem_id;           // ID do array de Semáforos IPC usado
+int shm_id;           // ID da Memória Partilhada IPC usada
+Database *db;         // Database utilizada, que estará em Memória Partilhada
+MsgCliente mensagem;  // Variável que tem a mensagem enviada do Cidadao para o Servidor
+MsgServidor resposta; // Variável que tem a mensagem de resposta enviadas do Servidor para o Cidadao
+int vaga_ativa;       // Índice da BD de Vagas que foi reservado pela função reserva_vaga()
 
 /* Protótipos de funções */
-void init_ipc();                    // Função a ser implementada pelos alunos
-void init_database();               // Função a ser implementada pelos alunos
-void espera_mensagem_cidadao();     // Função a ser implementada pelos alunos
-void trata_mensagem_cidadao();      // Função a ser implementada pelos alunos
-void envia_resposta_cidadao();      // Função a ser implementada pelos alunos
-void cria_pedido();                 // Função a ser implementada pelos alunos
-void vacina();                      // Função a ser implementada pelos alunos
-void cancela_pedido();              // Função a ser implementada pelos alunos
-void servidor_dedicado();           // Função a ser implementada pelos alunos
-int reserva_vaga(int, int);         // Função a ser implementada pelos alunos
-void liberta_vaga(int);             // Função a ser implementada pelos alunos
-void termina_servidor(int);         // Função a ser implementada pelos alunos
-void termina_servidor_dedicado(int);// Função a ser implementada pelos alunos
+void init_ipc();                     // Função a ser implementada pelos alunos
+void init_database();                // Função a ser implementada pelos alunos
+void espera_mensagem_cidadao();      // Função a ser implementada pelos alunos
+void trata_mensagem_cidadao();       // Função a ser implementada pelos alunos
+void envia_resposta_cidadao();       // Função a ser implementada pelos alunos
+void cria_pedido();                  // Função a ser implementada pelos alunos
+void vacina();                       // Função a ser implementada pelos alunos
+void cancela_pedido();               // Função a ser implementada pelos alunos
+void servidor_dedicado();            // Função a ser implementada pelos alunos
+int reserva_vaga(int, int);          // Função a ser implementada pelos alunos
+void liberta_vaga(int);              // Função a ser implementada pelos alunos
+void termina_servidor(int);          // Função a ser implementada pelos alunos
+void termina_servidor_dedicado(int); // Função a ser implementada pelos alunos
 
-int main() {    // Não é suposto que os alunos alterem nada na função main()
-    signal(SIGINT, termina_servidor);   // Se receber <CTRL+C>, chama a função que termina o Servidor
+int main()
+{                                     // Não é suposto que os alunos alterem nada na função main()
+    signal(SIGINT, termina_servidor); // Se receber <CTRL+C>, chama a função que termina o Servidor
     signal(SIGCHLD, SIG_IGN);
     // S1) Chama a função init_ipc(), que tenta criar uma fila de mensagens que tem a KEY IPC_KEY definida em common.h (alterar esta KEY para ter o valor do nº do aluno, como indicado nas aulas). Deve assumir que a fila de mensagens já foi criada. Se tal não aconteceu, dá erro e termina com exit status 1. Esta função, em caso de sucesso, preenche a variável global msg_id;
     init_ipc();
     // S2) Chama a função init_database(), que inicia a base de dados
     init_database();
-    while (TRUE) {
+    while (TRUE)
+    {
         // S3) Chama a função espera_mensagem_cidadao(), que espera uma mensagem (na fila de mensagens com o tipo = 1) e preenche a mensagem enviada pelo processo Cidadão na variável global mensagem; em caso de erro, termina com erro e exit status 1;
         espera_mensagem_cidadao();
         // S4) O comportamento do processo Servidor agora irá depender da mensagem enviada pelo processo Cidadão no campo pedido:
@@ -59,27 +65,29 @@ int main() {    // Não é suposto que os alunos alterem nada na função main()
  *     Todos estes elementos têm em comum serem criados com a KEY IPC_KEY definida em common.h (alterar esta KEY para ter o valor do nº do aluno, como indicado nas aulas), e com permissões 0600. Se qualquer um destes elementos IPC já existia anteriormente, dá erro e termina com exit status 1. Esta função, em caso de sucesso, preenche as variáveis globais respetivas msg_id, sem_id, e shm_id;
  *     O semáforo em questão será usado com o padrão “Mutex”, pelo que será iniciado com o valor 1;
  */
-void init_ipc() {
+void init_ipc()
+{
     debug("<");
 
-    // S1) Tenta criar:
-    // Todos estes elementos têm em comum serem criados com a KEY IPC_KEY definida em common.h (alterar esta KEY para ter o valor do nº do aluno, como indicado nas aulas), e com permissões 0600. Se qualquer um destes elementos IPC já existia anteriormente, dá erro e termina com exit status 1. Esta função, em caso de sucesso, preenche as variáveis globais respetivas msg_id, sem_id, e shm_id;
-    // • uma fila de mensagens IPC;
-    // exit_on_error(<var>, "init_ipc) Fila de Mensagens com a Key definida já existe ou não pode ser criada");
+    msg_id = msgget(IPC_KEY, IPC_EXCL | 0600);
+    exit_on_error(msg_id, "init_ipc) Fila de Mensagens com a Key definida já existe ou não pode ser criada");
 
     debug(".");
-    // • um array de semáforos IPC de dimensão 1;
-    // exit_on_error(<var>, "init_ipc) Semáforo com a Key definida já existe ou não pode ser criada");
+
+    sem_id = semget(IPC_KEY, 1, IPC_EXCL | 0600);
+    exit_on_error(sem_id, "init_ipc) Semáforo com a Key definida já existe ou não pode ser criada");
 
     debug(".");
-    // O semáforo em questão será usado com o padrão “Mutex”, pelo que será iniciado com o valor 1;
-    // exit_on_error(<var>, "init_ipc) Semáforo com a Key definida não pode ser iniciado com o valor 1");
+
+    int status = semctl(sem_id, 0, SETVAL, 1);
+    exit_on_error(status, "init_ipc) Semáforo com a Key definida não pode ser iniciado com o valor 1");
 
     debug(".");
-    // • uma memória partilhada IPC de dimensão suficiente para conter um elemento Database.
-    // exit_on_error(<var>, "init_ipc) Memória Partilhada com a Key definida já existe ou não pode ser criada");
 
-    // sucesso("S1) Criados elementos IPC com a Key %x: MSG %d, SEM %d, SHM %d", IPC_KEY, msg_id, sem_id, shm_id);
+    shm_id = shmget(IPC_KEY, sizeof(Database), IPC_EXCL | 0600);
+    exit_on_error(shm_id, "init_ipc) Memória Partilhada com a Key definida já existe ou não pode ser criada");
+
+    sucesso("S1) Criados elementos IPC com a Key %x: MSG %d, SEM %d, SHM %d", IPC_KEY, msg_id, sem_id, shm_id);
     debug(">");
 }
 
@@ -90,7 +98,8 @@ void init_ipc() {
  * @param   maxsize     Tamanho máximo do ficheiro a ler
  * @return              Número de bytes lidos, ou 0 em caso de erro
  */
-size_t read_binary( char* filename, void* buffer, const size_t maxsize ) {
+size_t read_binary(char *filename, void *buffer, const size_t maxsize)
+{
     struct stat st;
     // A função stat() preenche uma estrutura com dados do ficheiro, incluindo o tamanho do ficheiro.
     // stat() retorna -1 se erro
@@ -99,7 +108,7 @@ size_t read_binary( char* filename, void* buffer, const size_t maxsize ) {
     if (st.st_size > maxsize)
         exit_on_error(-1, "read_binary) O buffer não tem espaço para o ficheiro");
 
-    FILE* f = fopen(filename, "r");
+    FILE *f = fopen(filename, "r");
     // fopen retorna NULL se erro
     exit_on_null(f, "read_binary) Erro na abertura do ficheiro");
 
@@ -118,11 +127,12 @@ size_t read_binary( char* filename, void* buffer, const size_t maxsize ) {
  * @param   size        Número de bytes a escrever
  * @return              Número de bytes escrever, ou 0 em caso de erro
  */
-size_t save_binary(char* filename, void* buffer, const size_t size) {
-    FILE* f = fopen(filename, "w");
+size_t save_binary(char *filename, void *buffer, const size_t size)
+{
+    FILE *f = fopen(filename, "w");
     // fopen retorna NULL se erro
     exit_on_null(f, "save_binary) Erro na abertura do ficheiro");
-   
+
     // fwrite está a escrever size elementos, logo retorna um valor < size se erro
     if (fwrite(buffer, 1, size, f) < size)
         exit_on_error(-1, "save_binary) Erro na escrita do ficheiro");
@@ -138,7 +148,8 @@ size_t save_binary(char* filename, void* buffer, const size_t size) {
  *     • Lê o ficheiro FILE_ENFERMEIROS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->enfermeiros e db->num_enfermeiros. Se não o conseguir, dá erro e termina com exit status 1;
  *     • Inicia o array db->vagas, colocando todos os campos de todos os elementos com o valor -1.
  */
-void init_database() {
+void init_database()
+{
     debug("<");
 
     // S2) Inicia a base de dados:
@@ -147,10 +158,10 @@ void init_database() {
 
     debug(".");
     // • Lê o ficheiro FILE_CIDADAOS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->cidadaos e db->num_cidadaos. Se não o conseguir, dá erro e termina com exit status 1;
- 
+
     debug(".");
     // • Lê o ficheiro FILE_ENFERMEIROS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->enfermeiros e db->num_enfermeiros. Se não o conseguir, dá erro e termina com exit status 1;
- 
+
     debug(".");
     // • Inicia o array db->vagas, colocando todos os campos de todos os elementos com o valor -1.
 
@@ -162,7 +173,8 @@ void init_database() {
  * S3) Espera uma mensagem (na fila de mensagens com o tipo = 1) e preenche a mensagem enviada pelo processo Cidadão na variável global mensagem;
  *     em caso de erro, termina com erro e exit status 1;
  */
-void espera_mensagem_cidadao() {
+void espera_mensagem_cidadao()
+{
     debug("<");
 
     // S3) Espera uma mensagem (na fila de mensagens com o tipo = 1) e preenche a mensagem enviada pelo processo Cidadão na variável global mensagem; em caso de erro, termina com erro e exit status 1;
@@ -176,21 +188,22 @@ void espera_mensagem_cidadao() {
 /**
  * S4) O comportamento do processo Servidor agora irá depender da variável global mensagem enviada pelo processo Cidadão no campo pedido
  */
-void trata_mensagem_cidadao() {
+void trata_mensagem_cidadao()
+{
     debug("<");
 
     // if (...) {
-        // S4.1) Se o pedido for PEDIDO, imprime uma mensagem e avança para o passo S5;
-        // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-        // sucesso("S4.1) Novo pedido de vacinação de %d para %s", <PID_cidadao>, <num_utente>);
-        debug(".");
-        cria_pedido();
+    // S4.1) Se o pedido for PEDIDO, imprime uma mensagem e avança para o passo S5;
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // sucesso("S4.1) Novo pedido de vacinação de %d para %s", <PID_cidadao>, <num_utente>);
+    debug(".");
+    cria_pedido();
     // } else if (...) {
-        // S4.2) Se o estado for CANCELAMENTO, imprime uma mensagem, e avança para o passo S10;
-        // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-        // sucesso("S4.2) Cancelamento de vacinação de %d para %s", <PID_cidadao>, <num_utente>);
-        debug(".");
-        cancela_pedido();
+    // S4.2) Se o estado for CANCELAMENTO, imprime uma mensagem, e avança para o passo S10;
+    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+    // sucesso("S4.2) Cancelamento de vacinação de %d para %s", <PID_cidadao>, <num_utente>);
+    debug(".");
+    cancela_pedido();
     // }
 
     debug(">");
@@ -199,7 +212,8 @@ void trata_mensagem_cidadao() {
 /**
  * Estando a mensagem de resposta do processo Servidor na variável global resposta, envia essa mensagem para a fila de mensagens com o tipo = PID_Cidadao 
  */
-void envia_resposta_cidadao() {
+void envia_resposta_cidadao()
+{
     debug("<");
 
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
@@ -212,7 +226,8 @@ void envia_resposta_cidadao() {
 /**
  * S5) Processa um pedido de vacinação e envia uma resposta ao processo Cidadão. Para tal, essa função faz vários checks, atualizando o campo status da resposta:
  */
-void cria_pedido() {
+void cria_pedido()
+{
     debug("<");
 
     // S5.1) Procura o num_utente e nome na base de dados (BD) de Cidadãos:
@@ -251,7 +266,8 @@ void cria_pedido() {
 /**
  * S6) Processa a vacinação
  */
-void vacina() {
+void vacina()
+{
     debug("<");
 
     // S6.1) Cria um processo filho através da função fork();
@@ -261,11 +277,11 @@ void vacina() {
 
     debug(".");
     // if (...) {   // Processo FILHO
-        // S6.2) O processo filho chama a função servidor_dedicado();
-        // servidor_dedicado();
+    // S6.2) O processo filho chama a função servidor_dedicado();
+    // servidor_dedicado();
     // } else {     // Processo PAI
-        debug(".");
-        // S6.3) O processo pai regista o process ID do processo filho no campo PID_filho na BD de Vagas com o índice da variável global vaga_ativa;
+    debug(".");
+    // S6.3) O processo pai regista o process ID do processo filho no campo PID_filho na BD de Vagas com o índice da variável global vaga_ativa;
     //}
 
     debug(">");
@@ -274,7 +290,8 @@ void vacina() {
 /**
  * S7) Servidor Dedicado
  */
-void servidor_dedicado() {
+void servidor_dedicado()
+{
     debug("<");
 
     // S7.1) Arma o sinal SIGTERM;
@@ -320,7 +337,8 @@ void servidor_dedicado() {
 /**
  * S8) Tenta reservar uma vaga livre na BD de Vagas
  */
-int reserva_vaga(int index_cidadao, int index_enfermeiro) {
+int reserva_vaga(int index_cidadao, int index_enfermeiro)
+{
     debug("<");
 
     vaga_ativa = -1;
@@ -344,7 +362,8 @@ int reserva_vaga(int index_cidadao, int index_enfermeiro) {
 /**
  * S9) Tenta libertar uma vaga na BD de Vagas, liberta a vaga da BD de Vagas, colocando o campo index_cidadao dessa entrada da BD de Vagas com o valor -1
  */
-void liberta_vaga(int index_vaga) {
+void liberta_vaga(int index_vaga)
+{
     debug("<");
 
     //  S9) Tenta libertar uma vaga na BD de Vagas, liberta a vaga da BD de Vagas, colocando o campo index_cidadao dessa entrada da BD de Vagas com o valor -1
@@ -352,6 +371,6 @@ void liberta_vaga(int index_vaga) {
     debug(">");
 }
 
-void termina_servidor(int sinal) {}         // Função a ser implementada pelos alunos
+void termina_servidor(int sinal) {}          // Função a ser implementada pelos alunos
 void termina_servidor_dedicado(int sinal) {} // Função a ser implementada pelos alunos
-void cancela_pedido() {}              // Função a ser implementada pelos alunos
+void cancela_pedido() {}                     // Função a ser implementada pelos alunos
