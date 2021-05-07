@@ -57,7 +57,7 @@ void init_ipc()
     debug("<");
 
     int msgId = msgget(IPC_KEY, IPC_EXCL);
-    exit_on_error(1, "init_ipc) Fila de Mensagens com a Key definida não existe ou não pode ser aberta");
+    exit_on_error(msgId, "init_ipc) Fila de Mensagens com a Key definida não existe ou não pode ser aberta");
     sucesso("C1) Fila de Mensagens com a Key %x aberta com o ID %d", IPC_KEY, msg_id);
     msg_id = msgId;
 
