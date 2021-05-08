@@ -70,12 +70,12 @@ void init_ipc()
 {
     debug("<");
 
-    msg_id = msgget(IPC_KEY, IPC_EXCL | 0600);
+    msg_id = msgget(IPC_KEY, IPC_CREAT | 0600);
     exit_on_error(msg_id, "init_ipc) Fila de Mensagens com a Key definida já existe ou não pode ser criada");
 
     debug(".");
 
-    sem_id = semget(IPC_KEY, 1, IPC_EXCL | 0600);
+    sem_id = semget(IPC_KEY, 1, IPC_CREAT | 0600);
     exit_on_error(sem_id, "init_ipc) Semáforo com a Key definida já existe ou não pode ser criada");
 
     debug(".");
@@ -183,10 +183,9 @@ void espera_mensagem_cidadao()
 {
     debug("<");
 
-    // S3) Espera uma mensagem (na fila de mensagens com o tipo = 1) e preenche a mensagem enviada pelo processo Cidadão na variável global mensagem; em caso de erro, termina com erro e exit status 1;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // exit_on_error(<var>, "Não é possível ler a mensagem do Cidadao");
-    // sucesso("Cidadão enviou mensagem");
+    int receiveStatus = msgrcv(msg_id, &mensagem, sizeof(MsgCliente), 0, 1);
+    exit_on_error(receiveStatus, "Não é possível ler a mensagem do Cidadao");
+    sucesso("Cidadão enviou mensagem");
 
     debug(">");
 }
@@ -198,19 +197,20 @@ void trata_mensagem_cidadao()
 {
     debug("<");
 
-    // if (...) {
-    // S4.1) Se o pedido for PEDIDO, imprime uma mensagem e avança para o passo S5;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("S4.1) Novo pedido de vacinação de %d para %s", <PID_cidadao>, <num_utente>);
-    debug(".");
-    cria_pedido();
-    // } else if (...) {
-    // S4.2) Se o estado for CANCELAMENTO, imprime uma mensagem, e avança para o passo S10;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("S4.2) Cancelamento de vacinação de %d para %s", <PID_cidadao>, <num_utente>);
-    debug(".");
-    cancela_pedido();
-    // }
+    TipoPedido pedido = mensagem.dados.pedido;
+
+    if (pedido == PEDIDO) 
+    {
+        sucesso("S4.1) Novo pedido de vacinação de %d para %d", mensagem.dados.PID_cidadao, mensagem.dados.num_utente);
+        debug(".");
+        cria_pedido();
+    }
+    else if (pedido == CANCELAMENTO)
+    {
+        sucesso("S4.2) Cancelamento de vacinação de %d para %d", mensagem.dados.PID_cidadao, mensagem.dados.num_utente);
+        debug(".");
+        cancela_pedido();
+    }
 
     debug(">");
 }
@@ -235,6 +235,7 @@ void envia_resposta_cidadao()
 void cria_pedido()
 {
     debug("<");
+    int index_cidadao, index_enfermeiro = -1;
 
     // S5.1) Procura o num_utente e nome na base de dados (BD) de Cidadãos:
     //       • Se o num_utente e nome do utilizador for encontrado na BD Cidadãos, os dados do cidadão deverão ser copiados da BD Cidadãos para o campo cidadao da resposta;
@@ -245,7 +246,41 @@ void cria_pedido()
     // erro("S5.1) Cidadão %d, %s  não foi encontrado na BD Cidadãos", <num_utente>, <nome>);
     // sucesso("S5.1) Cidadão %d, %s encontrado, estado_vacinacao=%d, status=%d", <num_utente>, <nome>, <estado_vacinacao>, <status>);
 
+    int cidFound = 0;
+    for (int i = 0; i < db->num_cidadaos; i++)
+    {
+        Cidadao cidadao = db->cidadaos[i];
+        if (mensagem.dados.num_utente == cidadao.num_utente 
+        && strcmp(mensagem.dados.nome, cidadao.nome))
+        {
+            cidFound = 1;
+            index_cidadao = i;
+
+            resposta.dados.cidadao = cidadao;
+
+            //TODO: Perguntar discrepância entre o que vem aqui escrito e o que está no enunciado v3 (S5.1)
+            /////////////////////////////////////////////
+            if (cidadao.estado_vacinacao >= 2)     //////
+                resposta.dados.status = VACINADO;  //////
+            else if (cidadao.estado_vacinacao > 0) //////
+                resposta.dados.status = EMCURSO;   //////
+            /////////////////////////////////////////////
+
+            sucesso("S5.1) Cidadão %d, %s encontrado, estado_vacinacao=%d, status=%d", 
+                cidadao.num_utente, cidadao.nome, cidadao.estado_vacinacao, resposta.dados.status);
+
+            break;
+        }
+    }
+
+    if (cidFound == 0)
+    {
+        resposta.dados.status = DESCONHECIDO;
+        erro("S5.1) Cidadão %d, %s  não foi encontrado na BD Cidadãos", mensagem.dados.num_utente, mensagem.dados.nome);
+    }
+
     debug(".");
+
     // S5.2) Caso o Cidadão esteja em condições de ser vacinado (i.e., se status não for DESCONHECIDO, VACINADO nem EMCURSO), procura o enfermeiro correspondente na BD Enfermeiros:
     //       • Se não houver centro de saúde, ou não houver nenhum enfermeiro no centro de saúde correspondente  status = NAOHAENFERMEIRO;
     //       • Se há enfermeiro, mas este não tiver disponibilidade => status = AGUARDAR.
@@ -253,18 +288,56 @@ void cria_pedido()
     // erro("S5.2) Enfermeiro do CS %s não foi encontrado na BD Cidadãos", <localidade>);
     // sucesso("S5.2) Enfermeiro do CS %s encontrado, disponibilidade=%d, status=%d", <localidade>, <disponibilidade>, <status>);
 
-    debug(".");
-    // S5.3) Caso o enfermeiro esteja disponível, procura uma vaga para vacinação na BD Vagas. Para tal, chama a função reserva_vaga(Index_Cidadao, Index_Enfermeiro) usando os índices do Cidadão e do Enfermeiro nas respetivas BDs:
-    //      • Se essa função tiver encontrado e reservado uma vaga => status = OK;
-    //      • Se essa função não conseguiu encontrar uma vaga livre => status = AGUARDAR.
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // erro("S5.3) Não foi encontrada nenhuma vaga livre para vacinação");
-    // sucesso("S5.3) Foi reservada a vaga %d para vacinação, status=%d", <index_vaga>, <status>);
+    if (resposta.dados.status != DESCONHECIDO && resposta.dados.status != VACINADO && resposta.dados.status != EMCURSO)
+    {
+        int enfFound = 0;
+        for (int i = 0; i < db->num_enfermeiros; i++)
+        {
+            Enfermeiro enfermeiro = db->enfermeiros[i];
+
+            if (strcmp(enfermeiro.CS_enfermeiro, resposta.dados.cidadao.localidade))
+            {
+                enfFound = 1;
+                
+                if (enfermeiro.disponibilidade == 1)
+                {
+                    index_enfermeiro = i;
+
+                    sucesso("S5.2) Enfermeiro do CS %s encontrado, disponibilidade=%d, status=%d", 
+                        enfermeiro.CS_enfermeiro, enfermeiro.disponibilidade, resposta.dados.status);
+                    
+                    debug(".");
+
+                    int vagaDisp = reserva_vaga(index_cidadao, index_enfermeiro);
+
+                    if (vagaDisp != -1)
+                    {
+                        resposta.dados.status = OK;
+                        sucesso("S5.3) Foi reservada a vaga %d para vacinação, status=%d", vagaDisp, resposta.dados.status);
+                    }
+                    else
+                    {
+                        resposta.dados.status = AGUARDAR;
+                        erro("S5.3) Não foi encontrada nenhuma vaga livre para vacinação");
+                    }
+                }
+                else if (enfermeiro.disponibilidade == 0)
+                    resposta.dados.status = AGUARDAR;
+            }
+
+        }
+
+        if (enfFound == 0)
+        {
+            resposta.dados.status = NAOHAENFERMEIRO;
+            erro("S5.2) Enfermeiro do CS %s não foi encontrado na BD Cidadãos", resposta.dados.cidadao.localidade);
+        }
+    }
 
     debug(".");
-    // S5.4) Se no final de todos os checks, status for OK, chama a função vacina().
-    // if (OK == <status>)
-    //    vacina();
+    
+    if (OK == resposta.dados.status)
+       vacina();
 
     debug(">");
 }
