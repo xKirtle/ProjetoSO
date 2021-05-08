@@ -237,15 +237,6 @@ void cria_pedido()
     debug("<");
     int index_cidadao, index_enfermeiro = -1;
 
-    // S5.1) Procura o num_utente e nome na base de dados (BD) de Cidadãos:
-    //       • Se o num_utente e nome do utilizador for encontrado na BD Cidadãos, os dados do cidadão deverão ser copiados da BD Cidadãos para o campo cidadao da resposta;
-    //       • Se o utilizador (Cidadão) não for encontrado na BD Cidadãos => status = DESCONHECIDO;
-    //       • Se o Cidadão na BD Cidadãos tiver estado_vacinacao >= 2 => status = VACINADO;
-    //       • Se o Cidadão na BD Cidadãos tiver estado_vacinacao < 0 => status = EMCURSO.
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // erro("S5.1) Cidadão %d, %s  não foi encontrado na BD Cidadãos", <num_utente>, <nome>);
-    // sucesso("S5.1) Cidadão %d, %s encontrado, estado_vacinacao=%d, status=%d", <num_utente>, <nome>, <estado_vacinacao>, <status>);
-
     int cidFound = 0;
     for (int i = 0; i < db->num_cidadaos; i++)
     {
@@ -256,15 +247,14 @@ void cria_pedido()
             cidFound = 1;
             index_cidadao = i;
 
-            resposta.dados.cidadao = cidadao;
+            if (cidadao.estado_vacinacao == 2)
+                resposta.dados.status = VACINADO;
+            else if (cidadao.PID_cidadao > 0)
+                resposta.dados.status = EMCURSO;
+            else //TODO: Último ponto do S5.1?
+                db->cidadaos[i].PID_cidadao = mensagem.dados.PID_cidadao;
 
-            //TODO: Perguntar discrepância entre o que vem aqui escrito e o que está no enunciado v3 (S5.1)
-            /////////////////////////////////////////////
-            if (cidadao.estado_vacinacao >= 2)     //////
-                resposta.dados.status = VACINADO;  //////
-            else if (cidadao.estado_vacinacao > 0) //////
-                resposta.dados.status = EMCURSO;   //////
-            /////////////////////////////////////////////
+            resposta.dados.cidadao = cidadao;
 
             sucesso("S5.1) Cidadão %d, %s encontrado, estado_vacinacao=%d, status=%d", 
                 cidadao.num_utente, cidadao.nome, cidadao.estado_vacinacao, resposta.dados.status);
@@ -280,13 +270,6 @@ void cria_pedido()
     }
 
     debug(".");
-
-    // S5.2) Caso o Cidadão esteja em condições de ser vacinado (i.e., se status não for DESCONHECIDO, VACINADO nem EMCURSO), procura o enfermeiro correspondente na BD Enfermeiros:
-    //       • Se não houver centro de saúde, ou não houver nenhum enfermeiro no centro de saúde correspondente  status = NAOHAENFERMEIRO;
-    //       • Se há enfermeiro, mas este não tiver disponibilidade => status = AGUARDAR.
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // erro("S5.2) Enfermeiro do CS %s não foi encontrado na BD Cidadãos", <localidade>);
-    // sucesso("S5.2) Enfermeiro do CS %s encontrado, disponibilidade=%d, status=%d", <localidade>, <disponibilidade>, <status>);
 
     if (resposta.dados.status != DESCONHECIDO && resposta.dados.status != VACINADO && resposta.dados.status != EMCURSO)
     {
