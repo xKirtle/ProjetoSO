@@ -25,7 +25,7 @@ void init_ipc();                          // Função a ser implementada pelos a
 void cria_mensagem();                     // Função a ser implementada pelos alunos
 void envia_mensagem_servidor();           // Função a ser implementada pelos alunos
 void espera_resposta_servidor();          // Função a ser implementada pelos alunos
-StatusServidor trata_resposta_servidor(); // Função a ser implementada pelos alunos
+void trata_resposta_servidor();           // Função a ser implementada pelos alunos
 void pedido();                            // Função a ser implementada pelos alunos
 void vacina();                            // Função a ser implementada pelos alunos
 void cancela_pedido(int);                 // Função a ser implementada pelos alunos
@@ -84,8 +84,6 @@ void cria_mensagem()
     strcpy(mensagem.dados.nome, nome);
     sucesso("C2.1) Dados Cidadão: %d, %s", atoi(num_utente), nome);
 
-    debug(".");
-
     mensagem.tipo = 1;
     mensagem.dados.PID_cidadao = getpid();
     mensagem.dados.pedido = PEDIDO;
@@ -125,45 +123,37 @@ void espera_resposta_servidor()
 /**
  * Trata a resposta devolvida pelo servidor 
  */
-StatusServidor trata_resposta_servidor()
+void trata_resposta_servidor()
 {
     Cidadao cidadao = resposta.dados.cidadao;
-    //debug(".") statements?
     switch (resposta.dados.status)
     {
     case DESCONHECIDO:
         erro("C5.1) Não existe registo do utente %d, %s", cidadao.num_utente, cidadao.nome);
-        debug(".");
         exit(1);
         break;
     case VACINADO:
         sucesso("C5.2) O utente %d, %s foi vacinado", cidadao.num_utente, cidadao.nome);
-        debug(".");
         exit(0);
         break;
 
     case EMCURSO:
         sucesso("C5.3) A vacinação do utente %d, %s já está em curso", cidadao.num_utente, cidadao.nome);
-        debug(".");
         exit(0);
         break;
 
     case AGUARDAR:
         sucesso("C5.4) Utente %d, %s, por favor aguarde...", cidadao.num_utente, cidadao.nome);
-        debug(".");
         sleep(TEMPO_ESPERA);
         break;
 
     case OK:
         sucesso("C5.5) Utente %d, %s, vai agora ser vacinado", cidadao.num_utente, cidadao.nome);
-        debug(".");
         break;
 
     default:
         break;
     }
-
-    return resposta.dados.status;
 }
 
 /**
@@ -181,8 +171,8 @@ void pedido()
         // C4) Chama a função espera_resposta_servidor(), que espera a resposta do processo Servidor (na fila de mensagens com o tipo = PID_Cidadao) e preenche a mensagem enviada pelo processo Servidor na variável global resposta; em caso de erro, termina com erro e exit status 1.
         espera_resposta_servidor();
         // C5) O comportamento do processo Cidadão agora irá depender da resposta enviada pelo processo Servidor no campo status:
-        status = trata_resposta_servidor();
-    } while (OK != status);
+        trata_resposta_servidor();
+    } while (OK != resposta.dados.status);
 
     debug(">");
 }
@@ -246,17 +236,9 @@ void cancela_pedido(int sinal)
     debug("<");
 
     sucesso("C7.1) O cidadão cancelou a vacinação no processo %d", getpid());
-
-    debug(".");
-
     mensagem.dados.pedido = CANCELAMENTO;
     envia_mensagem_servidor();
-
-    debug(".");
-
     espera_resposta_servidor();
-
-    debug(".");
 
     StatusServidor status = resposta.dados.status;
     if (status == CANCEL)
