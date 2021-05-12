@@ -33,7 +33,7 @@ void init_database();                // Função a ser implementada pelos alunos
 void espera_mensagem_cidadao();      // Função a ser implementada pelos alunos
 void trata_mensagem_cidadao();       // Função a ser implementada pelos alunos
 void envia_resposta_cidadao();       // Função a ser implementada pelos alunos
-void cria_pedido();                  // Função a ser implementada pelos alunos
+void processa_pedido();                  // Função a ser implementada pelos alunos
 void vacina();                       // Função a ser implementada pelos alunos
 void cancela_pedido();               // Função a ser implementada pelos alunos
 void servidor_dedicado();            // Função a ser implementada pelos alunos
@@ -64,17 +64,18 @@ int main()
  *     • uma fila de mensagens IPC;
  *     • um array de semáforos IPC de dimensão 1;
  *     • uma memória partilhada IPC de dimensão suficiente para conter um elemento Database.
- *     Todos estes elementos têm em comum serem criados com a KEY IPC_KEY definida em common.h (alterar esta KEY para ter o valor do nº do aluno, como indicado nas aulas), e com permissões 0600. Se qualquer um destes elementos IPC já existia anteriormente, dá erro e termina com exit status 1. Esta função, em caso de sucesso, preenche as variáveis globais respetivas msg_id, sem_id, e shm_id;
+ *     Todos estes elementos têm em comum serem criados com a KEY IPC_KEY definida em common.h (alterar esta KEY para ter o valor do nº do aluno, como indicado nas aulas), e com permissões 0600. 
+ *     Se qualquer um destes elementos IPC já existia anteriormente, dá erro e termina com exit status 1. Esta função, em caso de sucesso, preenche as variáveis globais respetivas msg_id, sem_id, e shm_id;
  *     O semáforo em questão será usado com o padrão “Mutex”, pelo que será iniciado com o valor 1;
  */
 void init_ipc()
 {
     debug("<");
 
-    msg_id = msgget(IPC_KEY, IPC_CREAT | 0600);
+    msg_id = msgget(IPC_KEY, IPC_EXCL | 0600);
     exit_on_error(msg_id, "init_ipc) Fila de Mensagens com a Key definida já existe ou não pode ser criada");
 
-    sem_id = semget(IPC_KEY, 1, IPC_CREAT | 0600);
+    sem_id = semget(IPC_KEY, 1, IPC_EXCL | 0600);
     exit_on_error(sem_id, "init_ipc) Semáforo com a Key definida já existe ou não pode ser criada");
 
     int status = semctl(sem_id, 0, SETVAL, 1);
@@ -148,7 +149,8 @@ void init_database()
 {
     debug("<");
 
-    shmat(shm_id, &db, 0);
+    //shmat(shm_id, &db, 0);
+    db = (Database *)shmat(shm_id, 0, 0);
     exit_on_null(db, "init_database) Erro a ligar a Memória Dinâmica ao projeto");
 
     int size = read_binary(FILE_CIDADAOS, db->cidadaos, sizeof(Cidadao));
@@ -172,7 +174,7 @@ void espera_mensagem_cidadao()
 {
     debug("<");
 
-    int receiveStatus = msgrcv(msg_id, &mensagem, sizeof(MsgCliente), 0, 1);
+    int receiveStatus = msgrcv(msg_id, &mensagem, sizeof(MsgCliente), 1, 0);
     exit_on_error(receiveStatus, "Não é possível ler a mensagem do Cidadao");
     sucesso("Cidadão enviou mensagem");
 
@@ -191,7 +193,7 @@ void trata_mensagem_cidadao()
     if (pedido == PEDIDO) 
     {
         sucesso("S4.1) Novo pedido de vacinação de %d para %d", mensagem.dados.PID_cidadao, mensagem.dados.num_utente);
-        cria_pedido();
+        processa_pedido();
     }
     else if (pedido == CANCELAMENTO)
     {
@@ -221,7 +223,7 @@ void envia_resposta_cidadao()
 /**
  * S5) Processa um pedido de vacinação e envia uma resposta ao processo Cidadão. Para tal, essa função faz vários checks, atualizando o campo status da resposta:
  */
-void cria_pedido()
+void processa_pedido()
 {
     debug("<");
     int index_cidadao, index_enfermeiro = -1;
@@ -429,5 +431,9 @@ void termina_servidor_dedicado(int sinal)
 }
 void cancela_pedido() 
 {
+    for (int i = 0; i < db->vagas[MAX_VAGAS]; i++)
+    {
+        
+    }
     
 }
