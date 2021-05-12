@@ -33,7 +33,7 @@ void init_database();                // Função a ser implementada pelos alunos
 void espera_mensagem_cidadao();      // Função a ser implementada pelos alunos
 void trata_mensagem_cidadao();       // Função a ser implementada pelos alunos
 void envia_resposta_cidadao();       // Função a ser implementada pelos alunos
-void processa_pedido();                  // Função a ser implementada pelos alunos
+void processa_pedido();              // Função a ser implementada pelos alunos
 void vacina();                       // Função a ser implementada pelos alunos
 void cancela_pedido();               // Função a ser implementada pelos alunos
 void servidor_dedicado();            // Função a ser implementada pelos alunos
@@ -413,27 +413,70 @@ void liberta_vaga(int index_vaga)
 
     //TODO: Confirmar que index_vaga é um índice válido?
     db->vagas[index_vaga].index_cidadao = -1;
-    sucesso("S9) A vaga com o index <index_vaga> foi libertada");
+    sucesso("S9) A vaga com o index %d foi libertada", index_vaga);
 
     debug(">");
 }
 
 void termina_servidor(int sinal) 
 {
+    for (int i = 0; i < MAX_VAGAS; i++)
+        kill(db->vagas[i].PID_filho, SIGTERM);
 
+
+    for (int i = 0; i < db->num_enfermeiros; i++)
+        save_binary(FILE_ENFERMEIROS, db->enfermeiros, sizeof(Enfermeiro));
+    
+    for (int i = 0; i < db->num_cidadaos; i++)
+        save_binary(FILE_CIDADAOS, db->cidadaos, sizeof(Cidadao));
+
+    //TODO: NAO ESTA CERTO
+    //ipcrm(shm_id);
+    //ipcrm(sem_id);
+    //ipcrm(msg_id);
+
+    sucesso("S11.4) Servidor Terminado");
+    exit(0);
 }
 
 void termina_servidor_dedicado(int sinal) 
 {
+    //TODO: CANCELADA EM VEZ DE CANCEL?
     resposta.dados.status = CANCEL;
     envia_resposta_cidadao();
 
+    liberta_vaga(vaga_ativa);
+    sucesso("S12.3) Servidor Dedicado Terminado");
+    exit(0);
 }
 void cancela_pedido() 
 {
-    for (int i = 0; i < db->vagas[MAX_VAGAS]; i++)
+    int PID_filho = -1;
+    int index_vaga = -1;
+    Cidadao cid;
+    for (int i = 0; i < MAX_VAGAS; i++)
     {
-        
+        Vaga vaga = db->vagas[i];
+        if (vaga.index_cidadao == -1) break;
+        Cidadao cidadao = db->cidadaos[vaga.index_cidadao];
+
+        if (mensagem.dados.num_utente == cidadao.num_utente 
+        && strcmp(mensagem.dados.nome, cidadao.nome))
+        {
+            PID_filho = vaga.PID_filho;
+            index_vaga = i;
+            cid = cidadao;
+
+            break;
+        }
     }
-    
+
+    if (PID_filho != -1 && index_vaga != -1)
+    {
+        sucesso("S10.1) Foi encontrada a sessão do cidadão %d, %s na sala com o index %d", cid.num_utente, cid.nome, index_vaga);
+        kill(PID_filho, SIGTERM);
+        sucesso("S10.2) Enviado sinal SIGTERM ao Servidor Dedicado com PID=%d", PID_filho);
+    }
+    else
+        erro("S10.1) Não foi encontrada nenhuma sessão de vacinação com o cidadão %d, %s", mensagem.dados.num_utente, mensagem.dados.nome);
 }
