@@ -430,10 +430,10 @@ void termina_servidor(int sinal)
     for (int i = 0; i < db->num_cidadaos; i++)
         save_binary(FILE_CIDADAOS, db->cidadaos, sizeof(Cidadao));
 
-    //TODO: NAO ESTA CERTO
-    //ipcrm(shm_id);
-    //ipcrm(sem_id);
-    //ipcrm(msg_id);
+    semctl(sem_id, 0, IPC_RMID); 
+    shmdt(db); 
+    shmctl(shm_id, IPC_RMID, NULL); 
+    msgctl(msg_id, IPC_RMID, NULL); 
 
     sucesso("S11.4) Servidor Terminado");
     exit(0);
